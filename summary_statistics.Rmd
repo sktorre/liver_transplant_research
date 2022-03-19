@@ -1,0 +1,30 @@
+---
+title: "Summary Statistics"
+author: "Sarah Torrence"
+output:
+  html_document:
+    highlight: espresso
+    code_folding: hide
+    toc_float:
+      collapsed: true
+---
+
+```{r setup, echo=FALSE, cache=FALSE, warning=FALSE,message=FALSE}
+library(vtable)
+library(rms)
+
+library(boxr)
+box_auth()
+
+data <- box_read("930224826408")
+```
+
+
+```{r}
+sumtable(data)
+```
+
+```{r}
+html(describe(data, scroll=T))
+```
+

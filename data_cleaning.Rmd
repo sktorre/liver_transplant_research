@@ -1,0 +1,319 @@
+---
+title: "Data Cleaning"
+author: "Sarah Torrence"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T, warning = F, message = F, error = F)
+
+# Box access
+library(boxr)
+box_auth()
+
+library(tidyverse)
+library(rms)
+library(lubridate)
+library(naniar)
+library(janitor)
+library(ggplot2)
+
+#read in data
+data <- box_read_excel("911922698820")
+```
+
+# Data Cleaning
+
+```{r}
+#convert all '#NULL!' values to NA
+data[apply(data, 2, function(x) x=='#NULL!')] = NA
+
+#convert discharge date and date of death to date format
+data$dischargedate <- as.Date(as.numeric(data$dischargedate), origin = "1899-12-30")
+data$Dateofdeath <- as.Date(as.numeric(data$Dateofdeath), origin = "1899-12-30")
+data$Retransplantation <- as.Date(as.numeric(data$Retransplantation), origin = "1899-12-30")
+```
+
+## Fixing Data Errors
+
+There is a patient with an admit and discharge date in 2012 but a transplant date in 2020 which is out of range of when the data was collected. This patient's transplant really happened in 2012 so I can fix this value.
+
+```{r}
+data %>% filter(PatientMRN == 32535122)
+```
+
+```{r}
+data$DateofTransplant[data$PatientMRN == 32535122] = "2012-02-20 UTC"
+```
+
+There is a patient with a value of 6 for `needforrepeatsurgerywithin90daysbasedondatabase` which is only an indicator variable of 1 or 0. This value should be a 1.
+
+```{r}
+data %>% filter(PatientMRN == 29313962)
+```
+
+```{r}
+data$needforrepeatsurgerywithin90daysbasedondatabase[data$PatientMRN == 29313962] = 1
+```
+
+There were also some body composition measures with corrupted data points that I can fix with the true values.
+
+The patient with PatientMRN 41506114 had all files corrupted except for the body composition measurements at the year 3 check up. The first year values should be NA and the third year values can be updated with the true values.
+
+```{r}
+data %>% filter(PatientMRN == 41506114)
+```
+
+```{r}
+data$SMA00[data$PatientMRN == 41506114] = NA
+data$SMI00[data$PatientMRN == 41506114] = NA
+data$VAT03[data$PatientMRN == 41506114] = 448.754
+data$SAT03[data$PatientMRN == 41506114] = 253.8038
+data$SMhu03[data$PatientMRN == 41506114] = 28.5215
+data$SAThu03[data$PatientMRN == 41506114] = -108.554
+data$VFhu03[data$PatientMRN == 41506114] = -109.457
+```
+
+The patient with PatientMRN 10462265 had many in correct values I can also manually fix.
+
+```{r}
+data %>% filter(PatientMRN == 10462265)
+```
+
+```{r}
+data$SMA01[data$PatientMRN == 10462265] = NA
+data$SMA02[data$PatientMRN == 10462265] = 202.8777
+data$VAT00[data$PatientMRN == 10462265] = 165.5145
+data$VAT02[data$PatientMRN == 10462265] = 238.793
+data$VAT05[data$PatientMRN == 10462265] = 399.6145
+data$VAT06[data$PatientMRN == 10462265] = 252.3597
+data$SAT00[data$PatientMRN == 10462265] = 333.0657
+data$SAT02[data$PatientMRN == 10462265] = 424.8944
+data$SAT05[data$PatientMRN == 10462265] = 424.62
+data$SAT06[data$PatientMRN == 10462265] = 354.1946
+data$VFhu00[data$PatientMRN == 10462265] = -85.3318
+data$VFhu02[data$PatientMRN == 10462265] = -93.1241
+data$VFhu05[data$PatientMRN == 10462265] = -101.573
+data$VFhu06[data$PatientMRN == 10462265] = -98.8232
+data$SAThu00[data$PatientMRN == 10462265] = -93.9727
+data$SAThu02[data$PatientMRN == 10462265] = -87.7703
+data$SAThu05[data$PatientMRN == 10462265] = -103.925
+data$SAThu06[data$PatientMRN == 10462265] = -99.3833
+```
+
+
+## Grouping Categories
+
+There are some categorical variables in which certain categories have a very small number of patients. Additionally, some categories are very similar. In these instances, I can group similar and small categories in ways that are useful for modeling.
+
+### LocationofDChome0SNF1IPR2LTAC3homePT4
+
+```{r}
+table(data$LocationofDChome0SNF1IPR2LTAC3homePT4)
+```
+
+There are currently 5 categories for location of discharge.
+
+0. home
+1. SNF (Skilled nursing facility)
+2. IPR (In-patient Rehabilitation)
+3. LTAC (long term acute care)
+4. home PT (physical therapy)
+
+Home and home with PT are very similar and hard to distinguish so I can group these. The other 3 groups all have smaller amounts of patients and are similar types of facilities so these can be grouped into a 'long term care' category.
+
+```{r}
+data <- data %>% mutate(locationDC = case_when(
+  LocationofDChome0SNF1IPR2LTAC3homePT4 == 0 ~ 0,
+  LocationofDChome0SNF1IPR2LTAC3homePT4 == 1 ~ 1,
+  LocationofDChome0SNF1IPR2LTAC3homePT4 == 2 ~ 1,
+  LocationofDChome0SNF1IPR2LTAC3homePT4 == 3 ~ 1,
+  LocationofDChome0SNF1IPR2LTAC3homePT4 == 4 ~ 0
+))
+
+table(data$locationDC)
+```
+
+Now `locationDC` is a new variable with the following groups:
+  * 0 - home
+  * 1 - long term care
+  
+### 34.	biliarycomplications 21bileleak2biloma3stricture4other
+
+There is a not big difference between different types of biliary complications and some of the categories have very small numbers.
+
+```{r}
+table(data$`biliarycomplications 21bileleak2biloma3stricture4other`)
+```
+
+Currently the values for this variable are
+
+1. bile duct leak
+2. biloma
+3. stricture
+4. other 
+
+I want to make this a yes/no variable as to whether the patient had any biliary complications or not.
+
+```{r}
+data <- data %>% mutate(biliarycomplication = case_when(
+  is.na(`biliarycomplications 21bileleak2biloma3stricture4other`) ~ 0,
+  `biliarycomplications 21bileleak2biloma3stricture4other` > 0 ~ 1
+))
+
+table(data$biliarycomplication)
+```
+
+Now `biliarycomplication` is a new variable with the following groups:
+  * 0 - No
+  * 1 - Yes
+  
+### Pre and Post Condition Variables
+
+There are quite a few variables that indicate whether a patient had a condition (yes or no) before their liver transplant and then again whether they had the condition after their transplant. What I think is more interesting in the interaction between whether their condition status changed between before and after the transplant. I want to combined each of these yes/no variables into a categorical variable.
+
+```{r}
+data <- data %>% mutate(COPD = case_when(
+  (COPD_pre == 0 & COPD_post == 0) ~ 0,
+  (COPD_pre == 1 & COPD_post == 1) ~ 1,
+  (COPD_pre == 0 & COPD_post == 1) ~ 2,
+  (COPD_pre == 1 & COPD_post == 0) ~ 3
+),
+HTN = case_when(
+  (HTN_pre == 0 & HTN_post == 0) ~ 0,
+  (HTN_pre == 1 & HTN_post == 1) ~ 1,
+  (HTN_pre == 0 & HTN_post == 1) ~ 2,
+  (HTN_pre == 1 & HTN_post == 0) ~ 3
+),
+DM = case_when(
+  (DM_pre == 0 & DM_post == 0) ~ 0,
+  (DM_pre == 1 & DM_post == 1) ~ 1,
+  (DM_pre == 0 & DM_post == 1) ~ 2,
+  (DM_pre == 1 & DM_post == 0) ~ 3
+),
+CAD = case_when(
+  (CAD_pre == 0 & CAD_post == 0) ~ 0,
+  (CAD_pre == 1 & CAD_post == 1) ~ 1,
+  (CAD_pre == 0 & CAD_post == 1) ~ 2,
+  (CAD_pre == 1 & CAD_post == 0) ~ 3
+),
+CKD = case_when(
+  (CKD_pre == 0 & CKD_post == 0) ~ 0,
+  (CKD_pre == 1 & CKD_post == 1) ~ 1,
+  (CKD_pre == 0 & CKD_post == 1) ~ 2,
+  (CKD_pre == 1 & CKD_post == 0) ~ 3
+),
+CTD = case_when(
+  (CTD_pre == 0 & CTD_post == 0) ~ 0,
+  (CTD_pre == 1 & CTD_post == 1) ~ 1,
+  (CTD_pre == 0 & CTD_post == 1) ~ 2,
+  (CTD_pre == 1 & CTD_post == 0) ~ 3
+)
+)
+```
+
+Here for each of these new variables
+* 0 - no condition pre or post surgery
+* 1 - condition both pre and post surgery
+* 2 - no condition pre surgery but condition post surgery
+* 3 - condition pre surgery but no condition post surgery
+
+### VATSATratio
+
+There is `VATSATratio00` ratio but there is no VATSATratio variable for all other time points. I want to create a ratio for each time point from year 1 to year 10.
+
+```{r}
+data <- data %>% mutate(VATSATratio01 = VAT01/SAT01,
+                VATSATratio02 = VAT02/SAT02,
+                VATSATratio03 = VAT03/SAT03,
+                VATSATratio04 = VAT04/SAT04,
+                VATSATratio05 = VAT05/SAT05,
+                VATSATratio06 = VAT06/SAT06,
+                VATSATratio07 = VAT07/SAT07,
+                VATSATratio08 = VAT08/SAT08,
+                VATSATratio09 = VAT09/SAT09,
+                VATSATratio10 = VAT10/SAT10)
+```
+
+## Handling NA Values
+
+Some values are NA because the data point is missing, but others are NA and mean something else. I want to check NAs in all columns and make sure data points are encoded with the correct values whether they are truly missing or mean something else.
+
+There are two patients without a discharge date or a IndexLOS. We confirmed that these patients died while still in the hospital meaning they were never discharged. They have many missing values that are not missing at random and should be dealt with.
+
+```{r}
+data %>% filter(is.na(dischargedate))
+```
+Patient `29313962` is missing:
+* dischargedate
+* IndexLOS
+* All body composition variables
+* locationDC
+
+Patient `41592460` is missing:
+* dischargedate
+* IndexLOS
+* locationDC
+
+
+For both patients the length of stay (IndexLOS) can be updated based on their death date or days until death.
+
+```{r}
+data[(data['PatientMRN'] == 29313962),'IndexLOS'] <- 40
+data[(data['PatientMRN'] == 41592460),'IndexLOS'] <- 11
+```
+
+
+`IPR1` is the number of days in inpatient rehab. NAs in this sense would mean that the patient did not have any days in inpatient rehab. Therefore, NAs can be imputed with 0's.
+
+```{r}
+data[is.na(data['IPR1']),'IPR1'] <- 0
+```
+
+```{r}
+data %>% filter(is.na(COPD_pre))
+```
+
+
+### Is there a date of death for all patients with days until death?
+
+```{r}
+table(is.na(data$Dateofdeath))
+```
+
+```{r}
+table(is.na(data$DaysUntilDeath))
+```
+
+```{r}
+check_deaths <- data %>% mutate(death = case_when(
+is.na(Dateofdeath) & is.na(DaysUntilDeath) ~ 0,
+!is.na(Dateofdeath) & !is.na(DaysUntilDeath) ~ 1,
+is.na(Dateofdeath) | is.na(DaysUntilDeath) ~ 2
+))
+
+table(check_deaths$death)
+```
+
+It looks like all patients with a date of death have days until death and vice versa so this is good and these two columns should be clean.
+
+### What is the outcome variable for modeling?
+
+### What are variables for modeling?
+
+### Any other cleaning that needs to be done?
+
+### What other pre-modeling tasks should I perform?
+
+### What statistical model should I be using?
+
+
+## Save Data
+
+```{r}
+box_write(data,
+           file_name = "liver_transplant_cleaned.csv",
+           dir_id = 154966409983)
+```
+
