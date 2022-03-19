@@ -9,9 +9,15 @@ Purpose:
 ## Goal
 
 
-## Available Data
+## Data
 
 Notes: All data is saved privately on Box due to privacy concerns.
 
-## Potential Analysis
+## Methods
+
+## Results
+
+## References
+
+## Acknowledgements
 
