@@ -298,16 +298,13 @@ table(check_deaths$death)
 
 It looks like all patients with a date of death have days until death and vice versa so this is good and these two columns should be clean.
 
-### What is the outcome variable for modeling?
+## Clean Variable Names
 
-### What are variables for modeling?
-
-### Any other cleaning that needs to be done?
-
-### What other pre-modeling tasks should I perform?
-
-### What statistical model should I be using?
-
+```{r}
+data <- clean_names(data)
+data <- rename(data, sex = male_female_male0female1,
+       etiology = etiologyofliverdisease_nash0ash1viral2ai3other4)
+```
 
 ## Save Data
 

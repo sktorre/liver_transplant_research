@@ -17,48 +17,51 @@ library(rms)
 library(lubridate)
 library(naniar)
 library(janitor)
+library(ggplot2)
 
 #read in data
-data <- box_read_excel("911922698820")
+data <- box_read("930224826408")
 ```
 
 ```{r}
 head(data)
 ```
-# Data Cleaning
 
 ```{r}
-#convert all '#NULL!' values to NA
-data[apply(data, 2, function(x) x=='#NULL!')] = NA
-
-#convert discharge date and date of death to date format
-data$dischargedate <- as.Date(as.numeric(data$dischargedate), origin = "1899-12-30")
-data$Dateofdeath <- as.Date(as.numeric(data$Dateofdeath), origin = "1899-12-30")
-data$Retransplantation <- as.Date(as.numeric(data$Retransplantation), origin = "1899-12-30")
-```
-
-There is a patient with an admit and discharge date in 2012 but a transplant date in 2020 which is out of range of when the data was collected. We can assume this patient's transplant really happened in 2012.
-
-```{r}
-data %>% filter(PatientMRN == 32535122)
-```
-```{r}
-data$DateofTransplant[data$PatientMRN == 32535122] = "2012-02-20 UTC"
-```
-
-```{r}
-plot(describe(data))
-```
-
-
-
-
-```{r}
-describe(data)
+gg_miss_var(data, show_pct=TRUE)
 ```
 
 
 ```{r}
-data %>% filter(SMI00 == 0)
+table(is.na(data$SMA00))
+```
+
+```{r}
+table(data$readmissionwithin90d)
+```
+
+```{r}
+data <- data[!is.na(data$ICULOS),]
+plot(density(data$ICULOS))
+```
+
+```{r}
+tabyl(data$ICULOS)
+```
+
+```{r}
+a <- ifelse(data$index_los < data$ipr1, 1, 0)
+table(a)
+```
+
+```{r}
+d <- data %>% filter(a == 1) %>% select(patient_mrn, dateof_transplant, admitdate, dischargedate, index_los, iculos, ipr1)
+#write_csv(d, 'ipr_days_analysis.csv')
+```
+
+```{r}
+data$dischargedate <- as.POSIXct(data$dischargedate)
+df <- data %>% mutate(hops_days = dischargedate - admitdate)
+df %>% select(hops_days, index_los)
 ```
 

@@ -1,0 +1,179 @@
+---
+title: "Data Processing"
+author: "Sarah Torrence"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+* How do I handle the one missing row for dayson_ventpost_lt?
+* Should I handle missing data in general at the patient level before processing? Or after?
+* How do I handle discrepancies between ipr1 and location_dc? - ignore an assume ipr1 is correct
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T, warning = F, message = F, error = F)
+
+# Box access
+library(boxr)
+box_auth()
+
+library(janitor)
+library(ggplot2)
+library(tidyverse)
+library(plyr)
+
+#read in data
+data <- box_read("930224826408")
+```
+
+Currently each observation is for a unique liver transplant patient. To model state transition probabilities for each patient overtime, I need to process the data to be in the format of each observation being for one day for each patient and their state on that given day.
+
+```{r}
+head(data)
+```
+
+# Transition States
+
+The states that patients can transition from post liver transplant from best to worst are
+
+1) Home
+2) Inpatient Rehab
+3) Hospital
+4) ICU
+5) Ventilator
+6) Death
+
+The typical order a patient will go through post liver transplant are on a ventilator, in the ICU, in the hospital, at an inpatient rehab center, at home, and then finally death. This is the most common transition overtime, however, not all patients will follow this trend, may skip states and may never reach certain states.
+
+Currently, the data has the number of days in these states or until these states, but does not show patients moving through these different states overtime. I need to process the data to obtain a variable for states and time.
+
+```{r}
+data %>% select(dayson_ventpost_lt, iculos, index_los, ipr1, days_until_death)
+```
+
+There are 8 patients with days on ventilators over the number of days in the ICU meaning they were on ventilators in the hospital outside of the ICU.
+
+```{r}
+data %>% mutate(x = iculos - dayson_ventpost_lt) %>% filter(x < 0) %>% select(x, iculos, dayson_ventpost_lt)
+```
+## Initial State
+
+The initial state is either on a ventilator (5) or in the ICU (4).
+
+```{r}
+data['initial_state'] <- ifelse(data$dayson_ventpost_lt > 0, 4, 5)
+```
+
+## Create Days of each State
+
+If a patient starts on a ventilator, they will transition to the ICU the rest of `iculos` days or have 0 ICU days if they are on a ventilator more days than `iculos`. They will then transition to the regular hospital ward for the remainder of `index_los` days.
+
+```{r}
+data['days_icu'] <- ifelse(data$iculos - data$dayson_ventpost_lt >= 0, 
+                           data$iculos - data$dayson_ventpost_lt, 0)
+
+data['days_hospital'] <- ifelse(data$index_los - (data$days_icu + data$dayson_ventpost_lt) >= 0,
+                                data$index_los - (data$days_icu + data$dayson_ventpost_lt), 0)
+
+```
+
+The number of days in inpatient rehab is already in the data set as `ipr1`. 
+
+```{r}
+ipr_check <- data
+ipr_check$ipr <- ifelse(ipr_check$ipr1 > 0, 1, 0)
+ipr_check %>% group_by(location_dc, ipr) %>% dplyr::summarize(n = n())
+```
+
+```{r}
+ipr_check %>% filter(ipr == 0 & location_dc == 1)
+```
+
+```{r}
+ipr_check %>% filter(ipr == 1 & location_dc == 0)
+```
+
+There is no current indicator for days at home. I will assume that once a patient is discharged to home or leased from inpatient rehab, that the rest of the days should be home (not yet accounting for deaths). I will only create days home for patients until the maximum date for the longest stay in the hospital and inpatient rehab in the data set. The analysis will not go beyond that many days.
+
+```{r}
+#find total days
+data <- data %>% mutate(total_days = dayson_ventpost_lt + days_icu + days_hospital + ipr1)
+
+#find the maximum number of days
+days <- data %>% select(total_days)
+max_day <- max(days[!is.na(days),])
+
+#create home days
+data <- data %>% mutate(days_home = max_day - total_days)
+```
+
+## Create rows for each day
+
+Now that I know the number of days each patient was in each state, I need to create a row for each day for each patient with the corresponding state for that day.
+
+```{r}
+#test data with complete cases until I figure out how to handle missing data
+test <- data %>% select(patient_mrn, sex, ageat_tx, dayson_ventpost_lt, days_icu, days_hospital, ipr1, days_home, days_until_death)
+df <- test[complete.cases(test),]
+```
+
+Here I wrote a function to replicate as many rows as there are days for a given state.
+
+```{r}
+days_per_state <- function(df, column){
+  new_df <- data.frame(matrix(ncol = 10, nrow = 0))
+  colnames(new_df) <- c('patient_mrn', 'sex', 'ageat_tx', 'dayson_ventpost_lt',
+                        'days_icu','days_hospital', 'ipr1', 'days_home',
+                        'days_until_death', 'state')
+  for (i in 1:nrow(df)){
+    num_rows <- df[i,column]
+    if (num_rows == 0){
+      invisible()
+    } else{
+      for (j in 1:num_rows){
+        d <- df[i,]
+        d['state'] <- column
+        new_df <- rbind(new_df, d)
+      }
+    }
+  }
+  return(new_df)
+}
+```
+
+Now I want to call my new function on each of the days in a state columns to create additional rows for each patient for each observation day over the whole time period.
+
+```{r}
+processed_data <- data.frame(matrix(ncol = 10, nrow = 0))
+colnames(processed_data) <- c('patient_mrn', 'sex', 'ageat_tx', 'dayson_ventpost_lt',
+                              'days_icu','days_hospital', 'ipr1', 'days_home',
+                              'days_until_death', 'state')
+
+columns <- c('dayson_ventpost_lt', 'days_icu', 'days_hospital', 'ipr1', 'days_home')
+for (column in columns){
+  new_data <- days_per_state(df, column)
+  processed_data <- rbind(processed_data, new_data)
+}
+```
+
+Now I need to add a variable to indicate time (in days). For this variable each observation is one day and there should be the same number of days for each patient in the data.
+
+```{r}
+processed_data <- ddply(processed_data, .(patient_mrn), transform, time = seq_along(patient_mrn))
+```
+
+## Factoring in death
+
+The only state I have not yet dealt with is death. If a patient dies during the time period, I need to change their state to death on the day they died and then all states after that should be converted to death because this is an absorbing state.
+
+```{r}
+patients_died <- processed_data %>% filter(days_until_death <= max_day) %>%
+                 select(patient_mrn) %>% unique()
+
+for (patient in patients_died$patient_mrn){
+  df_d <- processed_data %>% filter(patient_mrn == patient)
+  death_date <- as.numeric(df_d$days_until_death[1])
+  processed_data[(processed_data$patient_mrn == patient),][death_date:max_day,'state'] <- 'dead'
+}
+```
+
+
