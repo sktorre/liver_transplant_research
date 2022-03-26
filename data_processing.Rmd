@@ -1,5 +1,5 @@
 ---
-title: "Data Processing"
+title: "Data Imputation and Processing"
 author: "Sarah Torrence"
 date: "`r Sys.Date()`"
 output: pdf_document
@@ -24,6 +24,12 @@ library(plyr)
 #read in data
 data <- box_read("930224826408")
 ```
+
+# Data Imputation
+
+
+
+# Data Processing
 
 Currently each observation is for a unique liver transplant patient. To model state transition probabilities for each patient overtime, I need to process the data to be in the format of each observation being for one day for each patient and their state on that given day.
 
@@ -174,6 +180,36 @@ for (patient in patients_died$patient_mrn){
   death_date <- as.numeric(df_d$days_until_death[1])
   processed_data[(processed_data$patient_mrn == patient),][death_date:max_day,'state'] <- 'dead'
 }
+```
+
+I want to change my states to be encoded as numbers like the following for ease of use throughout my analysis:
+
+1) Home
+2) Inpatient Rehab
+3) Hospital
+4) ICU
+5) Ventilator
+6) Death
+
+```{r}
+processed_data <- processed_data %>% mutate(state = case_when(
+                        state == "days_home" ~ 1,
+                        state == "ipr1" ~ 2,
+                        state == "days_hospital" ~ 3,
+                        state == "days_icu" ~ 4,
+                        state == "dayson_ventpost_lt" ~ 5,
+                        state == "dead" ~ 6
+))
+```
+
+
+# Previous State
+
+Now that I have all my states correctly identified, I want to use the previous state as a variable to predict state therefore I need to create this variable.
+
+```{r}
+processed_data <- processed_data %>% 
+                  mutate(prev_state = ifelse(time==1,0, lag(state)))
 ```
 
 
