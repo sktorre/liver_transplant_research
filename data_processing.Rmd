@@ -22,12 +22,57 @@ library(tidyverse)
 library(plyr)
 
 #read in data
-data <- box_read("930224826408")
+data <- box_read("936729249728")
+
+#convert to factors
+convert <- c('ascites_yn', 'he', 'race', 'sex', 'smoker', 'etiology', 'acr',
+             'newmalignancy', 'readmissionwithin90d', 'infection_90',
+             'need_repeat_surgery','vascularcomplicationswithin90days',
+             'biliarycomplication', 'copd', 'htn', 'dm', 'cad', 'ckd', 'ctd')
+
+for (var in convert){
+  data[var] <- as.factor(data[[var]])
+}
 ```
+
 
 # Data Imputation
 
+Because my data set is only 422 patients, I want to keep every single patient in my model. Therefore, I need to impute missing values.
 
+```{r}
+d <- data %>% select(-days_until_death)
+gg_miss_var(d, show_pct=TRUE)
+```
+
+There are only a small percentage of missing values, less than 1% for any variable which is really promising. I will use multiple imputation using predictive mean matching with 5 iterations of imputation to impute missing values. I want to use all of my variables to impute all other variables to get the best imputation.
+
+```{r}
+set.seed(2022)
+formula <- as.formula(paste0("~ ",paste0(colnames(data),collapse = "+")))
+a <- aregImpute(~age + height + weight + ascites_yn + he + race + sex + smoker + cit +  
+                dri + etiology + meld + acr + newmalignancy + surgeryduration +
+    readmissionwithin90d + infection_90 + need_repeat_surgery + 
+    vascularcomplicationswithin90days + sma00 + vat00 + sat00 + s_mhu00 + v_fhu00 +
+      sa_thu00 + biliarycomplication + index_los + days_until_death + iculos +
+      I(dayson_ventpost_lt) + I(ipr1) + I(htn) + I(dm) + I(ckd), 
+    data = data, n.impute = 5, x = TRUE)
+
+imputed_data <- as.data.frame(a[['x']]) %>% select(-days_until_death)
+
+#currently not including the following variables
+#copd + cad + ctd
+#copd and cad both have 1 NA
+```
+
+Because `days_until_death` is not missing at random due to missing values indicating the patient is still alive, I want to use imputed values for all missing data except for this variable.
+
+```{r}
+patient_and_death <- data %>% select(patient_mrn, days_until_death, ctd)
+
+#original data with imputed values
+data <- cbind(patient_and_death, imputed_data)
+```
 
 # Data Processing
 
@@ -53,7 +98,7 @@ The typical order a patient will go through post liver transplant are on a venti
 Currently, the data has the number of days in these states or until these states, but does not show patients moving through these different states overtime. I need to process the data to obtain a variable for states and time.
 
 ```{r}
-data %>% select(dayson_ventpost_lt, iculos, index_los, ipr1, days_until_death)
+data %>% select(dayson_ventpost_lt, iculos, index_los, ipr1, days_until_death) %>% head()
 ```
 
 There are 8 patients with days on ventilators over the number of days in the ICU meaning they were on ventilators in the hospital outside of the ICU.
@@ -66,7 +111,7 @@ data %>% mutate(x = iculos - dayson_ventpost_lt) %>% filter(x < 0) %>% select(x,
 The initial state is either on a ventilator (5) or in the ICU (4).
 
 ```{r}
-data['initial_state'] <- ifelse(data$dayson_ventpost_lt > 0, 4, 5)
+data['initial_state'] <- ifelse(data$dayson_ventpost_lt > 0, 5, 4)
 ```
 
 ## Create Days of each State
@@ -87,15 +132,7 @@ The number of days in inpatient rehab is already in the data set as `ipr1`.
 ```{r}
 ipr_check <- data
 ipr_check$ipr <- ifelse(ipr_check$ipr1 > 0, 1, 0)
-ipr_check %>% group_by(location_dc, ipr) %>% dplyr::summarize(n = n())
-```
-
-```{r}
-ipr_check %>% filter(ipr == 0 & location_dc == 1)
-```
-
-```{r}
-ipr_check %>% filter(ipr == 1 & location_dc == 0)
+ipr_check %>% group_by(ipr) %>% dplyr::summarize(n = n())
 ```
 
 There is no current indicator for days at home. I will assume that once a patient is discharged to home or leased from inpatient rehab, that the rest of the days should be home (not yet accounting for deaths). I will only create days home for patients until the maximum date for the longest stay in the hospital and inpatient rehab in the data set. The analysis will not go beyond that many days.
@@ -116,20 +153,13 @@ data <- data %>% mutate(days_home = max_day - total_days)
 
 Now that I know the number of days each patient was in each state, I need to create a row for each day for each patient with the corresponding state for that day.
 
-```{r}
-#test data with complete cases until I figure out how to handle missing data
-test <- data %>% select(patient_mrn, sex, ageat_tx, dayson_ventpost_lt, days_icu, days_hospital, ipr1, days_home, days_until_death)
-df <- test[complete.cases(test),]
-```
-
 Here I wrote a function to replicate as many rows as there are days for a given state.
 
 ```{r}
 days_per_state <- function(df, column){
-  new_df <- data.frame(matrix(ncol = 10, nrow = 0))
-  colnames(new_df) <- c('patient_mrn', 'sex', 'ageat_tx', 'dayson_ventpost_lt',
-                        'days_icu','days_hospital', 'ipr1', 'days_home',
-                        'days_until_death', 'state')
+  new_df <- data.frame(matrix(ncol = length(data) + 1, nrow = 0))
+  colnames(new_df) <- c(colnames(data),'state')
+  
   for (i in 1:nrow(df)){
     num_rows <- df[i,column]
     if (num_rows == 0){
@@ -149,14 +179,12 @@ days_per_state <- function(df, column){
 Now I want to call my new function on each of the days in a state columns to create additional rows for each patient for each observation day over the whole time period.
 
 ```{r}
-processed_data <- data.frame(matrix(ncol = 10, nrow = 0))
-colnames(processed_data) <- c('patient_mrn', 'sex', 'ageat_tx', 'dayson_ventpost_lt',
-                              'days_icu','days_hospital', 'ipr1', 'days_home',
-                              'days_until_death', 'state')
+processed_data <- data.frame(matrix(ncol = length(data) + 1, nrow = 0))
+colnames(processed_data) <- c(colnames(data),'state')
 
 columns <- c('dayson_ventpost_lt', 'days_icu', 'days_hospital', 'ipr1', 'days_home')
 for (column in columns){
-  new_data <- days_per_state(df, column)
+  new_data <- days_per_state(data, column)
   processed_data <- rbind(processed_data, new_data)
 }
 ```
@@ -203,7 +231,7 @@ processed_data <- processed_data %>% mutate(state = case_when(
 ```
 
 
-# Previous State
+## Previous State
 
 Now that I have all my states correctly identified, I want to use the previous state as a variable to predict state therefore I need to create this variable.
 
@@ -212,4 +240,17 @@ processed_data <- processed_data %>%
                   mutate(prev_state = ifelse(time==1,0, lag(state)))
 ```
 
+## Save Processed Data
+
+Now that my data is all processed and ready for modeling I want to save it in a csv.
+
+```{r}
+processed_data <- processed_data %>% select(-days_until_death, -index_los, -iculos,
+                                            -dayson_ventpost_lt, -ipr1, -days_icu,
+                                            -days_hospital, -days_home, -initial_state)
+
+#box_write(processed_data,
+#           file_name = "modeling_data_state_stats.csv",
+#           dir_id = 159363126194)
+```
 

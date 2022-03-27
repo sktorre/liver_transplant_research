@@ -302,8 +302,11 @@ It looks like all patients with a date of death have days until death and vice v
 
 ```{r}
 data <- clean_names(data)
-data <- rename(data, sex = male_female_male0female1,
-       etiology = etiologyofliverdisease_nash0ash1viral2ai3other4)
+data <- data %>% dplyr::rename(sex = male_female_male0female1,
+       etiology = etiologyofliverdisease_nash0ash1viral2ai3other4,
+       meld = mel_dat_tx, age = ageat_tx, height = heightcmat_tx, weight = weightkgat_tx,
+       acr = ac_rwithin90d, infection_90 = number_infectionswithin90days, 
+      need_repeat_surgery = needforrepeatsurgerywithin90daysbasedondatabase)
 ```
 
 ## Save Data

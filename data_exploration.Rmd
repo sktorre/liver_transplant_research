@@ -65,3 +65,18 @@ df <- data %>% mutate(hops_days = dischargedate - admitdate)
 df %>% select(hops_days, index_los)
 ```
 
+Some patients who were not discharged to ipr have days in inpatient rehab.
+
+```{r}
+ipr_check <- data
+ipr_check$ipr <- ifelse(ipr_check$ipr1 > 0, 1, 0)
+ipr_check %>% group_by(location_dc, ipr) %>% dplyr::summarize(n = n())
+```
+
+```{r}
+ipr_check %>% filter(ipr == 0 & location_dc == 1)
+```
+
+```{r}
+ipr_check %>% filter(ipr == 1 & location_dc == 0)
+```
