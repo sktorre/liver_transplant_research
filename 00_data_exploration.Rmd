@@ -80,3 +80,8 @@ ipr_check %>% filter(ipr == 0 & location_dc == 1)
 ```{r}
 ipr_check %>% filter(ipr == 1 & location_dc == 0)
 ```
+
+```{r}
+data %>% filter(is.na(sma00))
+```
+

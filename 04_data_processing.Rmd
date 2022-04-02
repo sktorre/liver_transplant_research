@@ -1,0 +1,230 @@
+---
+title: "Data Imputation and Processing"
+author: "Sarah Torrence"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T, warning = F, message = F, error = F)
+
+# Box access
+library(boxr)
+box_auth()
+
+library(janitor)
+library(ggplot2)
+library(tidyverse)
+library(plyr)
+
+#read in data
+data <- box_read("936729249728")
+
+#convert to factors
+convert <- c('ascites_yn', 'he', 'race', 'sex', 'smoker', 'etiology', 'acr',
+             'newmalignancy', 'readmissionwithin90d', 'infection_90',
+             'need_repeat_surgery','vascularcomplicationswithin90days',
+             'biliarycomplication', 'copd', 'htn', 'dm', 'cad', 'ckd', 'ctd', 'location_dc')
+
+for (var in convert){
+  data[var] <- as.factor(data[[var]])
+}
+```
+
+# Data Imputation
+
+Because my data set is only 422 patients, I want to keep every single patient in my model. Therefore, I need to impute missing values.
+
+```{r}
+d <- data %>% select(-days_until_death)
+gg_miss_var(d, show_pct=TRUE)
+```
+
+There are only a small percentage of missing values, less than 1% for any variable which is really promising. I will use multiple imputation using predictive mean matching with 5 iterations of imputation to impute missing values. I want to use all of my variables to impute all other variables to get the best imputation.
+
+```{r}
+set.seed(5225)
+ #formula <- as.formula(paste0("~ ",paste0(colnames(data),collapse = "+")))
+# a <- aregImpute(formula, 
+#     data = data, n.impute = 5, x = TRUE)
+
+a <- aregImpute(~age + height + weight + ascites_yn + he + race + sex + smoker + cit +
+                dri + etiology + meld + acr + newmalignancy + surgeryduration +
+    readmissionwithin90d + infection_90 + need_repeat_surgery +
+    vascularcomplicationswithin90days + sma00 + vat00 + sat00 + s_mhu00 + v_fhu00 +
+      sa_thu00 + biliarycomplication + index_los + days_until_death + iculos + location_dc 
+    + I(dayson_ventpost_lt) + I(htn) + I(dm) + I(ckd),
+    data = data, n.impute = 5, x = TRUE)
+
+imputed_data <- as.data.frame(a[['x']]) %>% select(-days_until_death)
+
+#currently not including the following variables
+#copd + cad + ctd
+#copd and cad both have 1 NA
+```
+
+Because `days_until_death` is not missing at random due to missing values indicating the patient is still alive, I want to use imputed values for all missing data except for this variable.
+
+```{r}
+patient_and_death <- data %>% select(patient_mrn, days_until_death, ctd)
+
+#original data with imputed values
+data <- cbind(patient_and_death, imputed_data)
+```
+
+# Data Processing
+
+Currently each observation is for a unique liver transplant patient. To model state transition probabilities for each patient overtime, I need to process the data to be in the format of each observation being for one day for each patient and their state on that given day.
+
+```{r}
+head(data)
+```
+
+# Transition States
+
+The states that patients can transition from post liver transplant from best to worst are
+
+1) Home/Inpatient Rehab
+2) Hospital
+3) ICU
+4) Death
+
+The typical order a patient will go through post liver transplant are in the ICU, in the hospital, at an inpatient rehab center or at home, and then finally death. This is the most common transition overtime, however, not all patients will follow this trend, may skip states and may never reach certain states.
+
+Currently, the data has the number of days in these states or until these states, but does not show patients moving through these different states overtime. I need to process the data to obtain a variable for states and time.
+
+```{r}
+data %>% select(iculos, index_los, days_until_death) %>% head()
+```
+
+## Create Days of each State
+
+All patients start in the ICU post liver transplant. They will then transition to the regular hospital ward for the remainder of `index_los` days.
+
+```{r}
+data['days_hospital'] <- ifelse(data$index_los - data$iculos >= 0,
+                                data$index_los - data$iculos, 0)
+
+```
+
+There is no current indicator for days at home or days in a rehab facility. I will assume that once a patient is discharged to home or inpatient rehab, that the rest of the days should be home  or inpatient rehab (not yet accounting for deaths). I will only create days home for patients until the maximum date for the longest stay in the hospital in the data set. The analysis will not go beyond that many days.
+
+```{r}
+#find total days
+data <- data %>% mutate(total_days = iculos + days_hospital)
+
+#find the maximum number of days
+days <- data %>% select(total_days)
+max_day <- max(days[!is.na(days),])
+
+#create home days
+data <- data %>% mutate(days_home_facility = max_day - total_days)
+```
+
+## Create rows for each day
+
+Now that I know the number of days each patient was in each state, I need to create a row for each day for each patient with the corresponding state for that day.
+
+Here I wrote a function to replicate as many rows as there are days for a given state.
+
+```{r}
+days_per_state <- function(df, column){
+  new_df <- data.frame(matrix(ncol = length(data) + 1, nrow = 0))
+  colnames(new_df) <- c(colnames(data),'state')
+  
+  for (i in 1:nrow(df)){
+    num_rows <- df[i,column]
+    if (num_rows == 0){
+      invisible()
+    } else{
+      for (j in 1:num_rows){
+        d <- df[i,]
+        d['state'] <- column
+        new_df <- rbind(new_df, d)
+      }
+    }
+  }
+  return(new_df)
+}
+```
+
+Now I want to call my new function on each of the days in a state columns to create additional rows for each patient for each observation day over the whole time period.
+
+```{r}
+processed_data <- data.frame(matrix(ncol = length(data) + 1, nrow = 0))
+colnames(processed_data) <- c(colnames(data),'state')
+
+columns <- c('iculos', 'days_hospital','days_home_facility')
+for (column in columns){
+  new_data <- days_per_state(data, column)
+  processed_data <- rbind(processed_data, new_data)
+}
+```
+
+Now I need to add a variable to indicate time (in days). For this variable each observation is one day and there should be the same number of days for each patient in the data.
+
+```{r}
+processed_data <- ddply(processed_data, .(patient_mrn), transform, time = seq_along(patient_mrn))
+```
+
+## Factoring in death
+
+The only state I have not yet dealt with is death. If a patient dies during the time period, I need to change their state to death on the day they died and then all states after that should be converted to death because this is an absorbing state.
+
+```{r}
+patients_died <- processed_data %>% filter(days_until_death <= max_day) %>%
+                 select(patient_mrn) %>% unique()
+
+for (patient in patients_died$patient_mrn){
+  df_d <- processed_data %>% filter(patient_mrn == patient)
+  death_date <- as.numeric(df_d$days_until_death[1])
+  processed_data[(processed_data$patient_mrn == patient),][death_date:max_day,'state'] <- 'dead'
+}
+```
+
+I want to change my states to be encoded as numbers like the following for ease of use throughout my analysis:
+
+1) Home/Inpatient Rehab
+2) Hospital
+3) ICU
+4) Death
+
+```{r}
+processed_data <- processed_data %>% mutate(state = case_when(
+                        state == "days_home_facility" ~ 1,
+                        state == "days_hospital" ~ 2,
+                        state == "iculos" ~ 3,
+                        state == "dead" ~ 4
+))
+```
+
+
+## Previous State
+
+Now that I have all my states correctly identified, I want to use the previous state as a variable to predict state therefore I need to create this variable.
+
+```{r}
+processed_data <- processed_data %>% 
+                  mutate(prev_state = ifelse(time==1,0, lag(state)))
+```
+
+## Save Processed Data
+
+Now that my data is all processed and ready for modeling I want to save it in a csv.
+
+```{r}
+processed_data <- processed_data %>% select(-days_until_death, -index_los, -iculos,
+                                            -days_hospital, -days_home_facility, -total_days)
+
+#box_write(processed_data,
+#           file_name = "modeling_data_state_stats.csv",
+#           dir_id = 159363126194)
+```
+
+
+
+
+
+
+

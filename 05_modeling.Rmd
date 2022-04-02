@@ -1,0 +1,145 @@
+---
+title: "Modeling"
+author: "Sarah Torrence"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T, warning = F, message = F, error = F)
+
+# Box access
+library(boxr)
+box_auth()
+
+library(ggplot2)
+library(rms)
+library(tidyverse)
+
+#read in data
+data <- box_read("936748103348")
+```
+
+## Cleaning up Data Types
+
+```{r}
+convert <- c('ascites_yn', 'he', 'race', 'sex', 'smoker', 'etiology', 'acr',
+             'newmalignancy', 'readmissionwithin90d',
+             'infection_90', 'need_repeat_surgery',
+             'vascularcomplicationswithin90days', 'biliarycomplication',
+             'location_dc','htn', 'dm', 'ckd', 'ctd')
+
+for (var in convert){
+  data[var] <- as.factor(data[[var]])
+}
+
+data$state <- factor(data$state,
+levels = c(1,2,3,4),
+labels = c("Home/IPR", "Hospital", "ICU", "Dead"))
+
+data$prev_state <- factor(data$prev_state,
+levels = c(1,2,3,4),
+labels = c("Home/IPR", "Hospital", "ICU", "Dead"))
+
+#filtering out day 0 with no previous state
+data <- data %>% filter(!is.na(prev_state))
+```
+
+## Checking the Proportional Odds Assumption
+
+```{r}
+d <- data %>% filter(time < 27)
+
+propsTrans(state ~ time + patient_mrn, data=d, maxsize=6) +
+  theme(legend.position='bottom', axis.text.x=element_text(angle=90, hjust=1))
+```
+
+```{r}
+propsPO(state ~ time, data=d, nrow=1) +
+  theme(legend.position='bottom', axis.text.x=element_text(angle=90, hjust=1))
+```
+
+```{r}
+f <- lrm(state ~ rcs(time, 5), data=d)
+g <- Function(f)   # derive predicted log odds as a function of day
+# Make another function that gets the OR vs. day=1
+dor <- function(time) exp(g(time) - g(1))
+propsPO(state ~ time, odds.ratio=dor, data=d) +
+  theme(legend.position='bottom')
+```
+
+## Allocating DF to predictors
+
+```{r}
+col_names <- colnames(data %>% select(-state, -patient_mrn))
+formula <- as.formula(paste0("state ~ ",paste0(col_names,collapse = "+")))
+s <- spearman2(formula ,data=d, p=2)
+plot(s)
+```
+
+`prev_state`, `time`, `location_dc`, `dayson_ventpost_lt` and `meld` have the highest $\rho^2$. I can allocate more df to these variables, specifically using splines for `time`, `dayson_ventpost_lt` and `meld`.
+
+## Model
+
+```{r}
+f <- lrm(state ~ ctd + age*sex + height + weight + ascites_yn + he + race + smoker 
+         + cit + dri + etiology + rcs(meld,3) + acr + newmalignancy + 
+    surgeryduration + readmissionwithin90d + infection_90 + need_repeat_surgery + 
+    vascularcomplicationswithin90days + sma00 + vat00 + sat00 + 
+    s_mhu00 + v_fhu00 + sa_thu00 + biliarycomplication + location_dc + 
+    rcs(dayson_ventpost_lt,3) + htn + dm + ckd + rcs(time,3) + prev_state, data=d,
+    x=TRUE, y=TRUE)
+f
+```
+
+
+```{r}
+g <- robcov(f, d$patient_mrn)
+plot(anova(g), trans=sqrt)
+```
+
+## Reduce Model
+
+**fast backwards** - should also take out other variables as well probably
+
+```{r}
+print(fastbw(f, rule=c('p')), estimates=FALSE)
+```
+
+validate model - boostrap
+penalize variable selection
+
+```{r}
+ set.seed(2022)
+v <- validate(f, B=100, bw=TRUE, estimates=FALSE, rule='p')
+```
+
+```{r}
+latex(v, B=30, file='', size='small')
+```
+
+
+Standard errors will be too small because we don't correct for variable selection (confidence intervals will be too small)
+
+
+```{r}
+an <- anova(f)
+print(an)
+```
+
+Adding body composition as a chunk test to get the combined effect of body composition.
+
+```{r}
+b <- anova(f, sma00, vat00, sat00, s_mhu00, v_fhu00, sa_thu00)
+s <- rbind(an, body_comp=b['TOTAL', ])
+class(s) <- 'anova.rms'
+plot(s)
+```
+
+Partial Effect plot (mean scale)
+
+```{r}
+M <- Mean(f)
+ggplot(Predict(f, fun=M), abbrev=TRUE, ylab=NULL)
+```
+
