@@ -19,8 +19,10 @@ library(naniar)
 library(janitor)
 library(ggplot2)
 
+original_data <- box_read_excel("911922698820")
+
 #read in data
-data <- box_read("930224826408")
+clean_data <- box_read("930224826408")
 ```
 
 ```{r}
@@ -85,3 +87,27 @@ ipr_check %>% filter(ipr == 1 & location_dc == 0)
 data %>% filter(is.na(sma00))
 ```
 
+```{r}
+describe(original_data %>% select(COPD_pre, COPD_post, HTN_pre, HTN_post, DM_pre, DM_post, CAD_pre, CAD_post, CKD_pre, CKD_post, CTD_pre, CTD_post))
+```
+```{r}
+apply((clean_data[c('copd', 'htn', 'dm', 'cad', 'ckd', 'ctd')]), 2, table)
+```
+
+```{r}
+clean_data['days_icu'] <- ifelse(clean_data$iculos - clean_data$dayson_ventpost_lt > 0,
+                           clean_data$iculos - clean_data$dayson_ventpost_lt, 0)
+```
+
+```{r}
+table(clean_data$iculos)
+```
+
+
+```{r}
+table(clean_data$days_icu)
+```
+
+```{r}
+table(clean_data$dayson_ventpost_lt)
+```

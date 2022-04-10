@@ -54,14 +54,10 @@ a <- aregImpute(~age + height + weight + ascites_yn + he + race + sex + smoker +
     readmissionwithin90d + infection_90 + need_repeat_surgery +
     vascularcomplicationswithin90days + sma00 + vat00 + sat00 + s_mhu00 + v_fhu00 +
       sa_thu00 + biliarycomplication + index_los + days_until_death + iculos + location_dc 
-    + I(dayson_ventpost_lt) + I(htn) + I(dm) + I(ckd),
+    + I(dayson_ventpost_lt) + I(htn) + I(dm) + I(ckd) + copd + cad + ctd,
     data = data, n.impute = 5, x = TRUE)
 
 imputed_data <- as.data.frame(a[['x']]) %>% select(-days_until_death)
-
-#currently not including the following variables
-#copd + cad + ctd
-#copd and cad both have 1 NA
 ```
 
 Because `days_until_death` is not missing at random due to missing values indicating the patient is still alive, I want to use imputed values for all missing data except for this variable.

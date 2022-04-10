@@ -103,122 +103,6 @@ data$SAThu06[data$PatientMRN == 10462265] = -99.3833
 ```
 
 
-## Grouping Categories
-
-There are some categorical variables in which certain categories have a very small number of patients. Additionally, some categories are very similar. In these instances, I can group similar and small categories in ways that are useful for modeling.
-
-### LocationofDChome0SNF1IPR2LTAC3homePT4
-
-```{r}
-table(data$LocationofDChome0SNF1IPR2LTAC3homePT4)
-```
-
-There are currently 5 categories for location of discharge.
-
-0. home
-1. SNF (Skilled nursing facility)
-2. IPR (In-patient Rehabilitation)
-3. LTAC (long term acute care)
-4. home PT (physical therapy)
-
-Home and home with PT are very similar and hard to distinguish so I can group these. The other 3 groups all have smaller amounts of patients and are similar types of facilities so these can be grouped into a 'long term care' category.
-
-```{r}
-data <- data %>% mutate(locationDC = case_when(
-  LocationofDChome0SNF1IPR2LTAC3homePT4 == 0 ~ 0,
-  LocationofDChome0SNF1IPR2LTAC3homePT4 == 1 ~ 1,
-  LocationofDChome0SNF1IPR2LTAC3homePT4 == 2 ~ 1,
-  LocationofDChome0SNF1IPR2LTAC3homePT4 == 3 ~ 1,
-  LocationofDChome0SNF1IPR2LTAC3homePT4 == 4 ~ 0
-))
-
-table(data$locationDC)
-```
-
-Now `locationDC` is a new variable with the following groups:
-  * 0 - home
-  * 1 - long term care
-  
-### 34.	biliarycomplications 21bileleak2biloma3stricture4other
-
-There is a not big difference between different types of biliary complications and some of the categories have very small numbers.
-
-```{r}
-table(data$`biliarycomplications 21bileleak2biloma3stricture4other`)
-```
-
-Currently the values for this variable are
-
-1. bile duct leak
-2. biloma
-3. stricture
-4. other 
-
-I want to make this a yes/no variable as to whether the patient had any biliary complications or not.
-
-```{r}
-data <- data %>% mutate(biliarycomplication = case_when(
-  is.na(`biliarycomplications 21bileleak2biloma3stricture4other`) ~ 0,
-  `biliarycomplications 21bileleak2biloma3stricture4other` > 0 ~ 1
-))
-
-table(data$biliarycomplication)
-```
-
-Now `biliarycomplication` is a new variable with the following groups:
-  * 0 - No
-  * 1 - Yes
-  
-### Pre and Post Condition Variables
-
-There are quite a few variables that indicate whether a patient had a condition (yes or no) before their liver transplant and then again whether they had the condition after their transplant. What I think is more interesting in the interaction between whether their condition status changed between before and after the transplant. I want to combined each of these yes/no variables into a categorical variable.
-
-```{r}
-data <- data %>% mutate(COPD = case_when(
-  (COPD_pre == 0 & COPD_post == 0) ~ 0,
-  (COPD_pre == 1 & COPD_post == 1) ~ 1,
-  (COPD_pre == 0 & COPD_post == 1) ~ 2,
-  (COPD_pre == 1 & COPD_post == 0) ~ 3
-),
-HTN = case_when(
-  (HTN_pre == 0 & HTN_post == 0) ~ 0,
-  (HTN_pre == 1 & HTN_post == 1) ~ 1,
-  (HTN_pre == 0 & HTN_post == 1) ~ 2,
-  (HTN_pre == 1 & HTN_post == 0) ~ 3
-),
-DM = case_when(
-  (DM_pre == 0 & DM_post == 0) ~ 0,
-  (DM_pre == 1 & DM_post == 1) ~ 1,
-  (DM_pre == 0 & DM_post == 1) ~ 2,
-  (DM_pre == 1 & DM_post == 0) ~ 3
-),
-CAD = case_when(
-  (CAD_pre == 0 & CAD_post == 0) ~ 0,
-  (CAD_pre == 1 & CAD_post == 1) ~ 1,
-  (CAD_pre == 0 & CAD_post == 1) ~ 2,
-  (CAD_pre == 1 & CAD_post == 0) ~ 3
-),
-CKD = case_when(
-  (CKD_pre == 0 & CKD_post == 0) ~ 0,
-  (CKD_pre == 1 & CKD_post == 1) ~ 1,
-  (CKD_pre == 0 & CKD_post == 1) ~ 2,
-  (CKD_pre == 1 & CKD_post == 0) ~ 3
-),
-CTD = case_when(
-  (CTD_pre == 0 & CTD_post == 0) ~ 0,
-  (CTD_pre == 1 & CTD_post == 1) ~ 1,
-  (CTD_pre == 0 & CTD_post == 1) ~ 2,
-  (CTD_pre == 1 & CTD_post == 0) ~ 3
-)
-)
-```
-
-Here for each of these new variables
-* 0 - no condition pre or post surgery
-* 1 - condition both pre and post surgery
-* 2 - no condition pre surgery but condition post surgery
-* 3 - condition pre surgery but no condition post surgery
-
 ### VATSATratio
 
 There is `VATSATratio00` ratio but there is no VATSATratio variable for all other time points. I want to create a ratio for each time point from year 1 to year 10.
@@ -245,6 +129,7 @@ There are two patients without a discharge date or a IndexLOS. We confirmed that
 ```{r}
 data %>% filter(is.na(dischargedate))
 ```
+
 Patient `29313962` is missing:
 * dischargedate
 * IndexLOS
