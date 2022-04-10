@@ -212,7 +212,7 @@ I am missing one observation for `iculos` and one observation for `dayson_ventpo
 set.seed(5225)
 
 a <- aregImpute(~age + height + weight + ascites_yn + he + race + sex + smoker + cit +
-                dri + etiology + meld + acr + newmalignancy + surgeryduration +
+                  etiology + meld + acr + newmalignancy + surgeryduration +
     readmissionwithin90d + infection_90 + need_repeat_surgery +
     vascularcomplicationswithin90days + sma00 + vat00 + sat00 + s_mhu00 + v_fhu00 +
       sa_thu00 + biliarycomplication + index_los + days_until_death + iculos + location_dc 
@@ -359,7 +359,7 @@ These variables include longitudinal body composition measures from annual check
 
 ```{r}
 predictors <- processed_data %>% select(age, height, weight, ascites_yn,
-                he, race, sex, smoker, cit, dri, etiology, meld, acr,
+                he, race, sex, smoker, cit, etiology, meld, acr,
                 newmalignancy, surgeryduration, readmissionin30d, readmissionwithin90d,
                 infection_90, need_repeat_surgery, vascularcomplicationswithin90days,
                 sma00, smi00, vat00, sat00, s_mhu00, v_fhu00, sa_thu00,
@@ -471,7 +471,7 @@ For patients younger than 40, there seems to be odd behavior but the average is 
 
 The final variables I would like to include as possible predictors in my model are:
 
-age, height, ascites_yn, he, race, sex, smoker, cit, dri, etiology, meld, acr, 
+age, height, ascites_yn, he, race, sex, smoker, cit, etiology, meld, acr, 
 newmalignancy, surgeryduration, readmissionwithin90d, infection_90, need_repeat_surgery, vascularcomplicationswithin90days, sma00, vat00, sat00, s_mhu00, v_fhu00, sa_thu00, biliarycomplication, copd, htn, dm, cad, ckd, ctd, location_dc, time, prev_state    
 
 I will first impute missing values for these variables and then I will do some further analysis on what variables should be in the final model and in what form.
@@ -505,7 +505,7 @@ data$prev_state <- factor(data$prev_state,
 levels = c("Home/IPR", "Hospital", "ICU/Vent", "Dead"))
 
 a <- aregImpute(~ age + height + ascites_yn + he + race + sex + smoker + cit +
-                dri + etiology + meld + acr + newmalignancy + surgeryduration +
+                etiology + meld + acr + newmalignancy + surgeryduration +
     readmissionwithin90d + infection_90 + need_repeat_surgery +
     vascularcomplicationswithin90days + sma00 + vat00 + sat00 + s_mhu00 + v_fhu00 +
       sa_thu00 + biliarycomplication + location_dc + htn + dm + ckd + 
@@ -646,7 +646,7 @@ levels = c("Home/IPR", "Hospital", "ICU/Vent"))
 data$patient_mrn <- as.character(data$patient_mrn)
 
 f <- lrm(state ~ ctd + sex + rcs(age,3) + rcs(sma00,3) + rcs(height,3) + ascites_yn + he +
-           race + smoker + rcs(cit,3) + rcs(dri,3) + etiology + rcs(meld,3) + acr + newmalignancy + 
+           race + smoker + rcs(cit,3) + etiology + rcs(meld,3) + acr + newmalignancy + 
     rcs(surgeryduration,3) + readmissionwithin90d + infection_90 + need_repeat_surgery + 
     vascularcomplicationswithin90days + rcs(vat00,3) + rcs(sat00,3) + 
     rcs(s_mhu00,3) + rcs(v_fhu00,3) + rcs(sa_thu00,3) + biliarycomplication + location_dc + 
@@ -672,7 +672,7 @@ Now I can build a model to predict state for each day post liver transplant up t
 
 ```{r}
 m <- orm(state ~ ctd + (sex + rcs(age,3) + rcs(sma00,3))^2 + rcs(height,3) + 
-           ascites_yn + he + race + smoker + rcs(cit,3) + rcs(dri,3) + etiology + 
+           ascites_yn + he + race + smoker + rcs(cit,3) + etiology + 
            rcs(meld,3) + acr + newmalignancy + 
     rcs(surgeryduration,3) + readmissionwithin90d + infection_90 + need_repeat_surgery + 
     vascularcomplicationswithin90days + rcs(vat00,3) + rcs(sat00,3) + 
@@ -718,7 +718,7 @@ I will fit my new model with these variables removed.
 
 ```{r}
 fin <- orm(state ~ ctd + (sex + rcs(age,3) + rcs(sma00,3))^2 + rcs(height,3) + he + 
-               rcs(dri,3) + etiology + rcs(meld,3) + acr + rcs(surgeryduration,3) +
+               etiology + rcs(meld,3) + acr + rcs(surgeryduration,3) +
                readmissionwithin90d + infection_90 + need_repeat_surgery + 
                vascularcomplicationswithin90days + rcs(vat00,3) + rcs(sat00,3) +
                rcs(s_mhu00,3) + rcs(v_fhu00,3) + rcs(sa_thu00,3) + biliarycomplication + 
