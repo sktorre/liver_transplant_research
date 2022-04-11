@@ -111,3 +111,9 @@ table(clean_data$days_icu)
 ```{r}
 table(clean_data$dayson_ventpost_lt)
 ```
+
+
+```{r}
+
+```
+

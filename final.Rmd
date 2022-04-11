@@ -539,6 +539,20 @@ labels = c("Home/IPR", "Hospital", "ICU/Vent", "Dead"))
 #            dir_id = 159363126194)
 
 data <- box_read(936748103348)
+data$state <- factor(data$state,
+levels = c("Home/IPR", "Hospital", "ICU/Vent", "Dead"))
+data$prev_state <- factor(data$prev_state,
+levels = c("Home/IPR", "Hospital", "ICU/Vent", "Dead"))
+
+convert <- c('ascites_yn', 'he', 'race', 'sex', 'smoker', 'etiology', 'acr',
+             'newmalignancy', 'readmissionwithin90d',
+             'infection_90', 'need_repeat_surgery',
+             'vascularcomplicationswithin90days', 'biliarycomplication', 'copd', 
+             'htn', 'dm', 'cad', 'ckd', 'ctd', 'location_dc')
+
+for (var in convert){
+  data[var] <- factor(data[[var]], )
+}
 ```
 
 # Viewing the state transition over time
@@ -547,9 +561,9 @@ data <- box_read(936748103348)
 
 Here is an event chart for a random sample of patients, removing all days post death if this state occurs in the random sample. This just gives a flavor of what states patients go through over time and shows trends in the data. As you can see, all patients start in the ICU and most end at home or in a inpatient rehab facility. The black square indicates death as you can see for one patient in this random sample.
 
-```{r}
-set.seed(465)
-ssamp <- sample(unique(data$patient_mrn), 65, FALSE)
+```{r, fig.height = 487}
+set.seed(45)
+ssamp <- sample(unique(data$patient_mrn), 50, FALSE)
 dr <- subset(data, patient_mrn %in% ssamp)
 dr <- subset(dr, prev_state != 'Dead')
 dr <- subset(dr, time <= 30)
@@ -559,7 +573,8 @@ dr$time <- dr$time - 1
 multEventChart(status ~ time + id, data=dr,
                absorb='Dead', sortbylast = TRUE) +
   theme_classic() +
-  theme(legend.position='bottom')
+  theme(legend.position='bottom') +
+  labs(title = "State Transitions for 30 Days Post Liver Transplant")
 ```
 
 This plot shows a summary of successive state transitions over the first 28 days after liver transplant. All patients start in the ICU on day 0. As you can see here on day 1 already many patients move out of the ICU and into a different ward in the hospital. By the end of this time period the most common transition is from hospital to home/IPR which makes sense as patients are discharged after recovering from their liver transplant.
@@ -640,7 +655,7 @@ This is essentially the same as my sample size which gives me a lot of flexibili
 
 I want to understand the relative importance of predictors to be able to allocate degrees of freedom and give more flexibility to the most important predictors. To do this I am using the variance-covariance matrix which is corrected for within-patient correlation using the robust cluster sandwich covariance estimator. I let continuous covariates have nonlinear effects using restricted cubic splines with 3 knots.
 
-```{r, fig.height =3}
+```{r, fig.height =5}
 data$prev_state <- factor(data$prev_state,
 levels = c("Home/IPR", "Hospital", "ICU/Vent"))
 data$patient_mrn <- as.character(data$patient_mrn)
@@ -671,11 +686,11 @@ plot(anova(g), trans=sqrt)
 Now I can build a model to predict state for each day post liver transplant up to 90 days terminating follow-up after death.  
 
 ```{r}
-m <- orm(state ~ ctd + (sex + rcs(age,3) + rcs(sma00,3))^2 + rcs(height,3) + 
+m <- orm(state ~ ctd + (sex + rcs(age,3) + rcs(vat00,3))^2 + rcs(height,3) + 
            ascites_yn + he + race + smoker + rcs(cit,3) + etiology + 
            rcs(meld,3) + acr + newmalignancy + 
     rcs(surgeryduration,3) + readmissionwithin90d + infection_90 + need_repeat_surgery + 
-    vascularcomplicationswithin90days + rcs(vat00,3) + rcs(sat00,3) + 
+    vascularcomplicationswithin90days + rcs(sma00,3) + rcs(sat00,3) + 
     rcs(s_mhu00,3) + rcs(v_fhu00,3) + rcs(sa_thu00,3) + biliarycomplication + location_dc + 
       htn + dm + ckd + rcs(time,3) #+ prev_state
     , data=data, x=TRUE, y=TRUE)

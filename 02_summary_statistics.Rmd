@@ -28,3 +28,24 @@ sumtable(data)
 html(describe(data, scroll=T))
 ```
 
+```{r}
+library(table1)
+data$sex <- factor(data$sex,
+                        levels = c(1,0),
+                        labels = c("Female", "Male"))
+
+data$etiology <- factor(data$etiology,
+                        levels = c(0, 1, 2, 3, 4),
+                        labels = c("Non-Alcoholic Steatohepatitis", "Alcoholic Steatohepatitis", "Viral", "Autoimmune", "Other"))
+
+label(data$age) <- "Age"
+label(data$meld) <- "MELD Score"
+label(data$index_los) <- "Hospital LOS"
+label(data$etiology) <- "Etoliogy of Liver Disease"
+label(data$bmi_pre) <- "BMI"
+
+table1(~ age + meld + index_los + etiology + bmi_pre | sex, data=data, topclass="Rtable1-zebra")
+```
+
+Code for Table
+
