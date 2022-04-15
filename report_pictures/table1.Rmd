@@ -41,7 +41,7 @@ data$etiology <- factor(data$etiology,
 label(data$age) <- "Age"
 label(data$meld) <- "MELD Score"
 label(data$index_los) <- "Hospital LOS"
-label(data$etiology) <- "Etiology of Liver Disease"
+label(data$etiology) <- "Etoliogy of Liver Disease"
 label(data$bmi_pre) <- "BMI"
 
 table1(~ age + meld + index_los + etiology + bmi_pre | sex, data=data, topclass="Rtable1-zebra")

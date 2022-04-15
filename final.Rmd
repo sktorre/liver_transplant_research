@@ -363,7 +363,7 @@ predictors <- processed_data %>% select(age, height, weight, ascites_yn,
                 newmalignancy, surgeryduration, readmissionin30d, readmissionwithin90d,
                 infection_90, need_repeat_surgery, vascularcomplicationswithin90days,
                 sma00, smi00, vat00, sat00, s_mhu00, v_fhu00, sa_thu00,
-                biliarycomplication, copd, htn, dm, cad, ckd, ctd, location_dc, time, prev_state)
+                biliarycomplication, copd, htn, dm, cad, ckd, ctd, time, prev_state)
 ```
 
 ```{r}
@@ -377,7 +377,7 @@ convert <- c('ascites_yn', 'he', 'race', 'sex', 'smoker', 'etiology', 'acr',
              'newmalignancy', 'readmissionin30d', 'readmissionwithin90d',
              'infection_90', 'need_repeat_surgery',
              'vascularcomplicationswithin90days', 'biliarycomplication', 'copd', 
-             'htn', 'dm', 'cad', 'ckd', 'ctd', 'location_dc', 'prev_state')
+             'htn', 'dm', 'cad', 'ckd', 'ctd', 'prev_state')
 
 for (var in convert){
   predictors[var] <- as.factor(predictors[[var]])
@@ -449,6 +449,13 @@ vc2 <- varclus(as.formula(paste0("~ ",paste0(colnames(predictors),collapse = "+"
 plot(vc2)
 ```
 
+joining the two plots above
+```{r, fig.height = 4}
+par(mfrow=c(2,1)) 
+plot(vc)
+plot(vc2)
+```
+
 `v_fhu00` and `sa_thu00` cluster together with a high correlation, but these are both important body composition variables in this analysis. `readmissionin30d` and `readmissionwithin90d` are also highly correlated. This makes sense as patients that are readmitted within 30 days of discharge are of course also readmitted within 90 days of discharge. To capture more patients with readmission I will remove `readmissionin30d` and keep `readmissionwithin90d` as a possible predictor. `weight` and `sat00` cluster together which also makes sense as `sat00` is a body fat measure. I will also remove `weight` as all the body composition variables are important to keep for my analysis.
 
 ```{r}
@@ -472,7 +479,7 @@ For patients younger than 40, there seems to be odd behavior but the average is 
 The final variables I would like to include as possible predictors in my model are:
 
 age, height, ascites_yn, he, race, sex, smoker, cit, etiology, meld, acr, 
-newmalignancy, surgeryduration, readmissionwithin90d, infection_90, need_repeat_surgery, vascularcomplicationswithin90days, sma00, vat00, sat00, s_mhu00, v_fhu00, sa_thu00, biliarycomplication, copd, htn, dm, cad, ckd, ctd, location_dc, time, prev_state    
+newmalignancy, surgeryduration, readmissionwithin90d, infection_90, need_repeat_surgery, vascularcomplicationswithin90days, sma00, vat00, sat00, s_mhu00, v_fhu00, sa_thu00, biliarycomplication, copd, htn, dm, cad, ckd, ctd, time, prev_state    
 
 I will first impute missing values for these variables and then I will do some further analysis on what variables should be in the final model and in what form.
 
@@ -490,7 +497,7 @@ data <- data %>% filter(!is.na(prev_state))
 Even though I have a large data set, because my data only contains 422 patients, I want to keep every single patient in my model. Therefore, I need to impute missing values.
 
 ```{r}
-gg_miss_var(data, show_pct=TRUE)
+gg_miss_var(data, show_pct=TRUE) + labs(title = "Percent of Missing Data")
 ```
 
 There are only a small percentage of missing values, less than 1% for any variable which is really promising. I will use multiple imputation using predictive mean matching with 5 iterations of imputation to impute missing values. I want to use all of my variables to impute all other variables to get the best imputation.
@@ -508,7 +515,7 @@ a <- aregImpute(~ age + height + ascites_yn + he + race + sex + smoker + cit +
                 etiology + meld + acr + newmalignancy + surgeryduration +
     readmissionwithin90d + infection_90 + need_repeat_surgery +
     vascularcomplicationswithin90days + sma00 + vat00 + sat00 + s_mhu00 + v_fhu00 +
-      sa_thu00 + biliarycomplication + location_dc + htn + dm + ckd + 
+      sa_thu00 + biliarycomplication + htn + dm + ckd + 
       copd + cad + ctd + prev_state + time + state + patient_mrn,
     data = data, n.impute = 5, x = TRUE)
 
@@ -518,7 +525,7 @@ convert <- c('ascites_yn', 'he', 'race', 'sex', 'smoker', 'etiology', 'acr',
              'newmalignancy', 'readmissionwithin90d',
              'infection_90', 'need_repeat_surgery',
              'vascularcomplicationswithin90days', 'biliarycomplication', 'copd', 
-             'htn', 'dm', 'cad', 'ckd', 'ctd', 'location_dc')
+             'htn', 'dm', 'cad', 'ckd', 'ctd')
 
 for (var in convert){
   data[var] <- factor(data[[var]], )
@@ -548,11 +555,12 @@ convert <- c('ascites_yn', 'he', 'race', 'sex', 'smoker', 'etiology', 'acr',
              'newmalignancy', 'readmissionwithin90d',
              'infection_90', 'need_repeat_surgery',
              'vascularcomplicationswithin90days', 'biliarycomplication', 'copd', 
-             'htn', 'dm', 'cad', 'ckd', 'ctd', 'location_dc')
+             'htn', 'dm', 'cad', 'ckd', 'ctd')
 
 for (var in convert){
   data[var] <- factor(data[[var]], )
 }
+data <- subset(data, time < 91)
 ```
 
 # Viewing the state transition over time
@@ -570,17 +578,20 @@ dr <- subset(dr, time <= 30)
 dr$id <- as.integer(as.factor(dr$patient_mrn))
 dr$status <- factor(dr$state, levels=rev(levels(dr$state)))
 dr$time <- dr$time - 1
-multEventChart(status ~ time + id, data=dr,
+
+datad <- datadist(dr)
+options(datadist="datad")
+multEventChart(state ~ time + id, data=dr,
                absorb='Dead', sortbylast = TRUE) +
   theme_classic() +
   theme(legend.position='bottom') +
   labs(title = "State Transitions for 30 Days Post Liver Transplant")
 ```
 
-This plot shows a summary of successive state transitions over the first 28 days after liver transplant. All patients start in the ICU on day 0. As you can see here on day 1 already many patients move out of the ICU and into a different ward in the hospital. By the end of this time period the most common transition is from hospital to home/IPR which makes sense as patients are discharged after recovering from their liver transplant.
+This plot shows a summary of successive state transitions over the first 30 days after liver transplant. All patients start in the ICU on day 0. As you can see here on day 1 already many patients move out of the ICU and into a different ward in the hospital. By the end of this time period the most common transition is from hospital to home/IPR which makes sense as patients are discharged after recovering from their liver transplant.
 
 ```{r, fig.height=4}
-d <- data %>% filter(time < 35)
+d <- data %>% filter(time < 31)
 
 propsTrans(state ~ time + patient_mrn, data=d, maxsize=6) +
   theme(legend.position='bottom', axis.text.x=element_text(angle=90, hjust=1))
@@ -594,9 +605,9 @@ The Proportional Odds model relies on the assumption that there are proportional
 
 Here is a plot of the proportion of each state over time. As mentioned before, on day one most patients are still in the ICU with only a few in the hospital (not ICU). The small pink band at the top shows deaths. This area will always be increasing as death is an absorbing state. By day 65, all patients have been either discharged to home or a facility or have passed away.
 
-```{r, fig.width = 5}
-data <- subset(data, time <= 90)
+```{r, fig.width = 10}
 propsPO(state ~ time, data=data, nrow=1) +
+  labs(title = "Proportion of Patients in Each State Over Time", x = "Time") +
   theme(legend.position='bottom', axis.text.x=element_text(angle=90, hjust=1))
 ```
 
@@ -635,6 +646,8 @@ As death is absorbing, I don't care as much about predicting death once a patien
 ```{r}
 #truncate after death
 data <- subset(data, prev_state != 'Dead')
+data$prev_state <- factor(data$prev_state,
+levels = c("Home/IPR", "Hospital", "ICU/Vent"))
 ```
 
 # Proportional Odds Modeling
@@ -653,71 +666,51 @@ $39153 - \frac{1}{39153^2}\sum_{i=1}^{4}n_{i}^3 = 39153 - \frac{1}{39153^2}(3413
 
 This is essentially the same as my sample size which gives me a lot of flexibility for modeling. For example, using the 15:1 rule of thumb as a very basic guideline, I could have $39152.34/15 =  2610$ parameters in the model. This allows me to be flexible with splines and interactions. 
 
-I want to understand the relative importance of predictors to be able to allocate degrees of freedom and give more flexibility to the most important predictors. To do this I am using the variance-covariance matrix which is corrected for within-patient correlation using the robust cluster sandwich covariance estimator. I let continuous covariates have nonlinear effects using restricted cubic splines with 3 knots.
+I want to understand the relative importance of predictors to be able to allocate degrees of freedom and give more flexibility to the most important predictors. To do this I am using the variance-covariance matrix which is corrected for within-patient correlation using the robust cluster sandwich covariance estimator. I let continuous covariates have nonlinear effects using restricted cubic splines with 5 knots.
 
 ```{r, fig.height =5}
-data$prev_state <- factor(data$prev_state,
-levels = c("Home/IPR", "Hospital", "ICU/Vent"))
 data$patient_mrn <- as.character(data$patient_mrn)
 
-f <- lrm(state ~ ctd + sex + rcs(age,3) + rcs(sma00,3) + rcs(height,3) + ascites_yn + he +
-           race + smoker + rcs(cit,3) + etiology + rcs(meld,3) + acr + newmalignancy + 
-    rcs(surgeryduration,3) + readmissionwithin90d + infection_90 + need_repeat_surgery + 
-    vascularcomplicationswithin90days + rcs(vat00,3) + rcs(sat00,3) + 
-    rcs(s_mhu00,3) + rcs(v_fhu00,3) + rcs(sa_thu00,3) + biliarycomplication + location_dc + 
-      htn + dm + ckd + rcs(time,3), data=data, tol=1e-13, x=TRUE, y=TRUE)
+f <- orm(state ~ ctd + sex + rcs(age,5) + rcs(sma00,5) + rcs(height,5) + ascites_yn + he +
+           race + smoker + rcs(cit,5) + etiology + rcs(meld,5) + acr + newmalignancy + 
+    rcs(surgeryduration,5) + readmissionwithin90d + infection_90 + need_repeat_surgery + 
+    vascularcomplicationswithin90days + rcs(vat00,5) + rcs(sat00,5) + 
+    rcs(s_mhu00,5) + rcs(v_fhu00,5) + rcs(sa_thu00,5) + biliarycomplication + 
+      htn + dm + ckd + rcs(time,5) + prev_state, data=data, x=TRUE, y=TRUE, maxit = 30)
 g <- robcov(f, data$patient_mrn)
 plot(anova(g), trans=sqrt)
 ```
 
-`time`, `location_dc`,`meld`, `need_repeat_surgery` and `infection_90` have the highest $\chi^2$. I can allocate more df to these variables, specifically using splines for `time` and `meld` as the other 3 are categorical variables. I do still have the flexibility to use splines on some other predictors as well like 
-
-```{r, fig.height = 3, include=FALSE}
-# I will use Spearman $\rho^2$ to allocate degrees of freedom, allowing more degrees of freedom for variables with a larger $\rho^2$.
-
-# col_names <- colnames(data %>% select(-state, -patient_mrn))
-# formula <- as.formula(paste0("state ~ ",paste0(col_names,collapse = "+")))
-# s <- spearman2(formula ,data=data, p=2)
-# plot(s)
-``` 
+`prev_state`, `meld`, `need_repeat_surgery`, and `time` and have the highest $\chi^2$. I can allocate more df to variables like these, specifically using splines for continuous variables as the categorical variables are arleady as flexible as they can be. I do have the flexibility to use splines on many predictors as my sample size is large enough to allow for more parameters.
 
 ## Model
 
-Now I can build a model to predict state for each day post liver transplant up to 90 days terminating follow-up after death.  
+Now I can build a model to predict state for each day post liver transplant up to 90 days terminating follow-up after death. In addition to using splines to relax the linearity assumption, I want to add some interaction terms to the model. I believe age and sex will both have an interaction with body composition. Because `sma00` had some correlation with `sex`, found in the variable clustering above, I will interact these two along with age.
 
 ```{r}
-m <- orm(state ~ ctd + (sex + rcs(age,3) + rcs(vat00,3))^2 + rcs(height,3) + 
-           ascites_yn + he + race + smoker + rcs(cit,3) + etiology + 
-           rcs(meld,3) + acr + newmalignancy + 
-    rcs(surgeryduration,3) + readmissionwithin90d + infection_90 + need_repeat_surgery + 
-    vascularcomplicationswithin90days + rcs(sma00,3) + rcs(sat00,3) + 
-    rcs(s_mhu00,3) + rcs(v_fhu00,3) + rcs(sa_thu00,3) + biliarycomplication + location_dc + 
-      htn + dm + ckd + rcs(time,3) #+ prev_state
-    , data=data, x=TRUE, y=TRUE)
+m <- orm(state ~ ctd + (sex + rcs(age,5) + rcs(sma00,4))^2 - rcs(age,5):sex +
+           rcs(height,3) + ascites_yn + he +race + smoker + rcs(cit,3) + etiology +
+           rcs(meld,5) + acr + newmalignancy + rcs(surgeryduration,5) +
+           readmissionwithin90d + infection_90 + need_repeat_surgery +
+           vascularcomplicationswithin90days + rcs(vat00,4) + rcs(sat00,3) + 
+           rcs(s_mhu00,3) + rcs(v_fhu00,3) + rcs(sa_thu00,4) + biliarycomplication +
+           htn + dm + ckd + rcs(time,5) + prev_state, 
+           data=data, x=TRUE, y=TRUE, maxit = 30)
 g <- robcov(m, data$patient_mrn)
 g
-
-
-# m <- orm(state ~ ctd + (sex + rcs(age,3) + rcs(sma00,3))^2 + rcs(height,3) + 
-#            ascites_yn + he + race + smoker + rcs(cit,3) + rcs(dri,3) + etiology + 
-#            rcs(meld,3) + acr + newmalignancy + 
-#     rcs(surgeryduration,3) + readmissionwithin90d + infection_90 + need_repeat_surgery + 
-#     vascularcomplicationswithin90days + rcs(vat00,3) + rcs(sat00,3) + 
-#     rcs(s_mhu00,3) + rcs(v_fhu00,3) + rcs(sa_thu00,3) + biliarycomplication + location_dc + 
-#       htn + dm + ckd + rcs(time,3), data=data, x=TRUE, y=TRUE)
-# m
 ```
 
 ```{r}
 anova(g)
 ```
+
 ```{r, fig.height =3}
 plot(anova(g))
 ```
 
-```{r}
-#Function(g)
-```
+`prev_state` is by far the strongest predictor of `state`. This makes sense as overtime the status of a patient is not changing much therefore it becomes increasingly likely that the state the previous day is the same as the current state today. The next strongest predictors are `meld`, `need_repeat_surgery` and `time`. 
+
+I can directly understand each parameter and how important each predictor is in the model, however the overall model is pretty complex with 72 degrees of freedom.
 
 ## Fast Backward Selection
 
@@ -727,30 +720,40 @@ Too see if I should narrow my predictors I performed fast backward selection
 print(fastbw(g, rule=c('p')), estimates=FALSE)
 ```
 
-Several variables were removed from the model in this process. `sex` was removed but not its interactions with `age` and `sma00`. Because `sex` interactions are so important I want to keep `sex` in the model as well. Due to the importance of body composition variables to this analysis I also want to keep all body composition variables as well. This means I would like to also keep `v_fhu00` and `s_mhu00` even though they were removed in this process. The final list of variables I will remove are `ascites_yn`, `cit`, `htn`, `smoker`, `race` and `newmalignancy`.
+Many variables were removed from the model in this process. `sex` was removed, but based on previous studies it is important to keep it in the model. Due to the importance of body composition variables to this analysis I also want to keep all body composition variables as well. I will however reduce the number of knots for some of these variables as they are not as important.
+
+The list of variables I will remove based on the fast backward variable selection and domain knowledge are `ascites_yn`, `ctd`, `htn`, `cit`, `smoker`, `race`, `newmalignancy`, `acr` and `height`.
 
 I will fit my new model with these variables removed.
 
 ```{r}
-fin <- orm(state ~ ctd + (sex + rcs(age,3) + rcs(sma00,3))^2 + rcs(height,3) + he + 
-               etiology + rcs(meld,3) + acr + rcs(surgeryduration,3) +
-               readmissionwithin90d + infection_90 + need_repeat_surgery + 
-               vascularcomplicationswithin90days + rcs(vat00,3) + rcs(sat00,3) +
-               rcs(s_mhu00,3) + rcs(v_fhu00,3) + rcs(sa_thu00,3) + biliarycomplication + 
-               location_dc + dm + ckd + rcs(time,3) #+ prev_state
-               , data=data, x=TRUE, y=TRUE)
+fin <- orm(state ~ (sex + rcs(age,3) + rcs(sma00,3))^2 - rcs(age,3):sex +
+           he + etiology + rcs(meld,5) + rcs(surgeryduration,3) +
+           readmissionwithin90d + infection_90 + need_repeat_surgery +
+           vascularcomplicationswithin90days + rcs(vat00,3) + rcs(sat00,3) + 
+           rcs(s_mhu00,3) + rcs(v_fhu00,3) + rcs(sa_thu00,3) + biliarycomplication +
+           dm + ckd + rcs(time,5) + prev_state, 
+           data=data, x=TRUE, y=TRUE, maxit = 30)
 final <- robcov(fin, data$patient_mrn)
 final
 ```
 
-
 # Model Validation
 
-Now that I have chosen my final model, I want to validate that model to check for overfitting. Becuase I performed fast backward selection, I must penalize this variable selection process so that my standard errors and confidence intervals are not too small.
+Now that I have chosen my final model, I want to validate that model to check for overfitting using bootstrap validation. Because I performed fast backward selection, I must penalize this variable selection process so that my standard errors and confidence intervals are not too small.
 
 ```{r, cache = TRUE}
-set.seed(2022)
-v <- validate(final, B=200, bw=TRUE, estimates=FALSE, rule='p')
+f <- orm(state ~ (sex + rcs(age,3) + rcs(sma00,3))^2 - rcs(age,3):sex +
+           he + etiology + rcs(meld,5) + rcs(surgeryduration,3) +
+           readmissionwithin90d + infection_90 + need_repeat_surgery +
+           vascularcomplicationswithin90days + rcs(vat00,3) + rcs(sat00,3) + 
+           rcs(s_mhu00,3) + rcs(v_fhu00,3) + rcs(sa_thu00,3) + biliarycomplication +
+           dm + ckd + rcs(time,5) + prev_state, 
+           data=data, x=TRUE, y=TRUE, maxit = 30)
+g <- robcov(f, data$patient_mrn)
+
+set.seed(202)
+v <- validate(g, B=100, estimates=FALSE, bw=TRUE, rule='p', tol=1e-14, maxit=25)
 v
 ```
 
@@ -760,36 +763,41 @@ Based on the low optimism for each index and the corrected $R^2$, $\rho$ and Slo
 
 ```{r}
 an2 <- anova(final)
-print(final)
+print(an2)
 ```
 
 There are many different body composition measures in this analysis. Since I want to understand how overall body composition effects state outcomes for each day during the 90 day period post liver transplant, I did a combined chunk test of all body composition variables as well as looking at each model predictor individually.
 
-```{r, fig.height = 3}
+```{r, fig.height = 5}
 b2 <- anova(final, sma00, vat00, sat00, s_mhu00, v_fhu00, sa_thu00)
-s2 <- rbind(an2, body_comp=b2['TOTAL', ])
+s2 <- rbind(an2, `body compositon`=b2['TOTAL', ])
 class(s2) <- 'anova.rms'
-plot(s2)
+plot(s2, main = "Testing Statistical Importance using ANOVA")
 ```
+As expected, the most important parameter in my model is `prev_state`. `meld`, `need_repeat_surgery` and `time` are also important predictors. The combined chunk test for body composition has a $\chi^2$ = 25.1 and a p-value of 0.12. It seems that overall body composition does not seem to be associated with short-term outcomes of liver transplants. However, `sma00` which is the variable for skeletal musle area does seem to be associated with short-term liver transplant outcomes. 
+
+The test for linearity shows that there is nonlinearity, but there does not seem to be any affect of interaction. `time` and `surgeryduration` both show nonlinear associations with the outcome state.
 
 ### Partial Effect plot (mean scale)
-
-The below plots show the partial effects of each of the predictors in the final model. 
-
-```{r, fig.height = 7, fig.width = 7}
-ggplot(Predict(final))
-```
-
-# Interpreting Predictions
 
 ```{r, include=FALSE}
 datad <- datadist(data)
 options(datadist="datad")
 ```
 
+The below plots show the partial effects of each of the predictors in the final model. 
+
+```{r, fig.height = 8}
+ggplot(Predict(final), vnames='names', sepdiscrete='vertical', title = "hello")
+```
+
+The partial effects plots show a nonflat relationship with only `time`, `prev_state` and slightly with `meld`. This makes sense as these are 3 of the most important predictors in the model. `need_repeat_surgery` was also an important predictor but doesn't really show a difference in log odds between the two levels.
+
+# Interpreting Predictions
+
 Here is a plot of the interquartile-range odds ratios for continuous predictors and simple odds ratios for categorical predictors. The numbers on the left axis next to each variable name indicate the upper and lower quartile ranges for continuous variables and the current versus reference group for categorical variables. The ranges on the left are in the original scale while the intervals that are plotted are on the log odds ratio scale.
 
-```{r, fig.height = 4}
+```{r, fig.height = 3}
 plot(summary(final), log=TRUE)
 ```
 
@@ -807,22 +815,51 @@ p90 <- q90(lps)
 ```
 
 ```{r}
-head(lp)
+p <- predict(final, type='fitted.ind')
+options(scipen = 50)
+x <- as.data.frame(p)
+y <- cbind(x, data)
+
+# y %>% select(time, `state=Home/IPR`) %>% group_by(time) %>% summarize(phome = mean(`state=Home/IPR`))
+
+prob_home <- y %>%
+  group_by(time) %>%
+  summarise_at(vars(`state=Home/IPR`), funs(mean(., na.rm=TRUE)))
+
+# box_write(prob_home,
+#           file_name = "po_phome.csv",
+#           dir_id = 159363126194)
+
+ggplot(prob_home, aes(x = time, y = `state=Home/IPR`)) + geom_line()
 ```
 
+
 ```{r}
-h <- Function(final)
+#h <- Function(final)
 ```
+
 ```{r}
 a <- Ecdf(~ log(sma00), group=state, fun=qlogis, label.curves=list(keys='lines'),
           data = data, xlab = 'log(sma00)', ylab=expression(logit(F[n](x))))
 print(a)
 ```
+```{r}
+# a <- Ecdf(~ log(sma00), group=state, fun=qlogis, label.curves=list(keys='lines'),
+#          data = data, xlab = 'log(sma00)', ylab=expression(logit(F[n](x))))
+# b <- Ecdf(~ log(meld), group=state, fun=qlogis, label.curves=list(keys='lines'),
+#          data = data, xlab = 'log(meld)', ylab=expression(logit(F[n](x))))
 
+#library(patchwork)
+# par(mfrow=c(1,2)) 
+Ecdf(~ log(sma00), group=state, fun=qlogis, label.curves=list(keys='lines'),
+          data = data, xlab = 'log(sma00)', ylab=expression(logit(F[n](x))))
+Ecdf(~ log(meld), group=state, fun=qlogis, label.curves=list(keys='lines'),
+          data = data, xlab = 'log(meld)', ylab=expression(logit(F[n](x))), add=TRUE)
+```
 
 ```{r}
-p <- Predict(final, time = c(5, 25, 50, 75, 90), sex, fun=plogis)
-ggplot(p)
+t <-  c(5, 25, 50, 75, 90)
+ggplot(Predict(final, time = t, sex, fun=plogis))
 ```
 
 
