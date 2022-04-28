@@ -19,16 +19,9 @@ box_auth()
 data <- box_read("930224826408")
 ```
 
+Here  are some summary statistics of representative variables in the data set stratified by gender.
 
-```{r}
-sumtable(data)
-```
-
-```{r}
-html(describe(data, scroll=T))
-```
-
-```{r}
+```{r,message=FALSE}
 library(table1)
 data$sex <- factor(data$sex,
                         levels = c(1,0),
@@ -47,5 +40,14 @@ label(data$bmi_pre) <- "BMI"
 table1(~ age + meld + index_los + etiology + bmi_pre | sex, data=data, topclass="Rtable1-zebra")
 ```
 
-Code for Table
+
+### More detailed descriptive statistics about each variables are shown below.
+
+This includes all original variables in addition to newly derived variables.
+
+```{r}
+html(describe(data, scroll=T))
+```
+
+
 
