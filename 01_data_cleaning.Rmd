@@ -1,29 +1,56 @@
 ---
-title: "Data Cleaning"
+title: "Liver Transplant Analysis - Data Cleaning"
 author: "Sarah Torrence"
-date: "`r Sys.Date()`"
-output: pdf_document
+date: 'Report rendered: `r Sys.Date()`'
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+    toc_float:
+      collapsed: true
+    fig-width: 8
+    fig-height: 6
+  rmdformats::html_clean:
+    self_contained: yes
+    thumbnails: yes
+    lightbox: yes
+    gallery: no
+    highlight: tango
+execute:
+  warning: no
+  message: no
 ---
 
-```{r setup, include=FALSE}
+```{r setup, include=FALSE, cache=FALSE, warning=FALSE,message=FALSE}
 knitr::opts_chunk$set(echo = T, warning = F, message = F, error = F)
 
-# Box access
-library(boxr)
-box_auth()
-
-library(tidyverse)
+library(Hmisc)
 library(rms)
+library(tidyverse)
+library(kableExtra)
 library(lubridate)
 library(naniar)
 library(janitor)
 library(ggplot2)
+library(plyr)
+library(knitr)
+library(rmarkdown)
+library(kableExtra)
+library(htmlTable)
+
+library(boxr)
+box_auth()
+
+# Set global ggplot theme
+theme_set(cowplot::theme_cowplot(font_size=12,
+                                 font_family = "Helvetica"))
+rmarkdown::html_document(df_print = "kable")
 
 #read in data
 data <- box_read_excel("911922698820")
 ```
 
-# Data Cleaning
+Before any analysis can be started, there are many data cleaning task that need done. All missing values should be in the form NA and dates should be in a date format.
 
 ```{r}
 #convert all '#NULL!' values to NA
@@ -37,7 +64,7 @@ data$Retransplantation <- as.Date(as.numeric(data$Retransplantation), origin = "
 
 ## Fixing Data Errors
 
-There is a patient with an admit and discharge date in 2012 but a transplant date in 2020 which is out of range of when the data was collected. This patient's transplant really happened in 2012 so I can fix this value.
+There is a patient with an admit and discharge date in 2012 but a transplant date in 2020 which is out of range of when the data was collected. This patient's transplant really happened in 2012 so this value needs to be fixed.
 
 ```{r}
 data %>% filter(PatientMRN == 32535122)
@@ -47,25 +74,26 @@ data %>% filter(PatientMRN == 32535122)
 data$DateofTransplant[data$PatientMRN == 32535122] = "2012-02-20 UTC"
 ```
 
-There is a patient with a value of 6 for `needforrepeatsurgerywithin90daysbasedondatabase` which is only an indicator variable of 1 or 0. This value should be a 1.
+There is a patient with a value of 6 for `needforrepeatsurgerywithin90daysbasedondatabase` which is only an indicator variable of 1 or 0. This value should be a 1 as 6 is not as option of one of the categories.
 
 ```{r}
-data %>% filter(PatientMRN == 29313962)
+paged_table(data %>% filter(PatientMRN == 29313962))
 ```
 
 ```{r}
 data$needforrepeatsurgerywithin90daysbasedondatabase[data$PatientMRN == 29313962] = 1
 ```
 
-There were also some body composition measures with corrupted data points that I can fix with the true values.
+There were also some body composition measures with corrupted data points that need to be fixed with the correct values.
 
 The patient with PatientMRN 41506114 had all files corrupted except for the body composition measurements at the year 3 check up. The first year values should be NA and the third year values can be updated with the true values.
 
 ```{r}
-data %>% filter(PatientMRN == 41506114)
+paged_table(data %>% filter(PatientMRN == 41506114))
 ```
 
 ```{r}
+#fixing the values
 data$SMA00[data$PatientMRN == 41506114] = NA
 data$SMI00[data$PatientMRN == 41506114] = NA
 data$VAT03[data$PatientMRN == 41506114] = 448.754
@@ -75,13 +103,14 @@ data$SAThu03[data$PatientMRN == 41506114] = -108.554
 data$VFhu03[data$PatientMRN == 41506114] = -109.457
 ```
 
-The patient with PatientMRN 10462265 had many in correct values I can also manually fix.
+The patient with PatientMRN 10462265 also had many incorrect values that needed to be fixed.
 
 ```{r}
-data %>% filter(PatientMRN == 10462265)
+paged_table(data %>% filter(PatientMRN == 10462265))
 ```
 
 ```{r}
+#fixing values
 data$SMA01[data$PatientMRN == 10462265] = NA
 data$SMA02[data$PatientMRN == 10462265] = 202.8777
 data$VAT00[data$PatientMRN == 10462265] = 165.5145
@@ -105,7 +134,7 @@ data$SAThu06[data$PatientMRN == 10462265] = -99.3833
 
 ### VATSATratio
 
-There is `VATSATratio00` ratio but there is no VATSATratio variable for all other time points. I want to create a ratio for each time point from year 1 to year 10.
+There is `VATSATratio00` ratio but there is no VATSATratio variable for all other time points. A ratio for each time point from year 1 to year 10 can be created.
 
 ```{r}
 data <- data %>% mutate(VATSATratio01 = VAT01/SAT01,
@@ -127,7 +156,7 @@ Some values are NA because the data point is missing, but others are NA and mean
 There are two patients without a discharge date or a IndexLOS. We confirmed that these patients died while still in the hospital meaning they were never discharged. They have many missing values that are not missing at random and should be dealt with.
 
 ```{r}
-data %>% filter(is.na(dischargedate))
+paged_table(data %>% filter(is.na(dischargedate)))
 ```
 
 Patient `29313962` is missing:
@@ -156,20 +185,28 @@ data[(data['PatientMRN'] == 41592460),'IndexLOS'] <- 11
 data[is.na(data['IPR1']),'IPR1'] <- 0
 ```
 
+There is also a patient missing observations for most comorbities, however, this must be assumed as missing at random as there is no indication as to why these values are missing.
+
 ```{r}
-data %>% filter(is.na(COPD_pre))
+paged_table(data %>% filter(is.na(COPD_pre)))
 ```
 
 
 ### Is there a date of death for all patients with days until death?
 
+It is important to ensure data quality and one way of doing that for this data set is to make sure that for any patients who did die that they also have the number of days until and death and vice versa. These should match up one to one.
+
 ```{r}
-table(is.na(data$Dateofdeath))
+table(is.na(data$Dateofdeath)) %>% 
+  kbl(col.names = c("Date of Death Not Missing", "Frequency"), align = 'c') %>% kable_minimal
 ```
 
 ```{r}
-table(is.na(data$DaysUntilDeath))
+table(is.na(data$DaysUntilDeath)) %>% 
+  kbl(col.names = c("Days Until Death Not Missing", "Frequency"), align = 'c') %>% kable_minimal
 ```
+
+They both have the same number of missing and non-missing observations, but it should be verified that these are the same observations.
 
 ```{r}
 check_deaths <- data %>% mutate(death = case_when(
@@ -178,12 +215,15 @@ is.na(Dateofdeath) & is.na(DaysUntilDeath) ~ 0,
 is.na(Dateofdeath) | is.na(DaysUntilDeath) ~ 2
 ))
 
-table(check_deaths$death)
+table(check_deaths$death)  %>% 
+  kbl(col.names = c("Days Until Death AND Date of Death Missing", "Frequency"), align = 'c') %>% kable_minimal
 ```
 
 It looks like all patients with a date of death have days until death and vice versa so this is good and these two columns should be clean.
 
 ## Clean Variable Names
+
+Some of the variables have extremely long and hard to read names so these can be converted into easier names to handle for future analysis.
 
 ```{r}
 data <- clean_names(data)
@@ -196,9 +236,11 @@ data <- data %>% dplyr::rename(sex = male_female_male0female1,
 
 ## Save Data
 
-```{r}
-box_write(data,
-           file_name = "liver_transplant_cleaned.csv",
-           dir_id = 154966409983)
+The cleaned data is saved on box under `liver_transplant_cleaned.csv` and is used for all future work.
+
+```{r, eval=FALSE}
+# box_write(data,
+#            file_name = "liver_transplant_cleaned.csv",
+#            dir_id = 154966409983)
 ```
 
