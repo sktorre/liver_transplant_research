@@ -1,0 +1,119 @@
+---
+title: "Exploring the Data"
+author: "Sarah Torrence"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T, warning = F, message = F, error = F)
+
+# Box access
+library(boxr)
+box_auth()
+
+library(tidyverse)
+library(rms)
+library(lubridate)
+library(naniar)
+library(janitor)
+library(ggplot2)
+
+original_data <- box_read_excel("911922698820")
+
+#read in data
+clean_data <- box_read("930224826408")
+```
+
+```{r}
+head(data)
+```
+
+```{r}
+gg_miss_var(data, show_pct=TRUE)
+```
+
+
+```{r}
+table(is.na(data$SMA00))
+```
+
+```{r}
+table(data$readmissionwithin90d)
+```
+
+```{r}
+data <- data[!is.na(data$ICULOS),]
+plot(density(data$ICULOS))
+```
+
+```{r}
+tabyl(data$ICULOS)
+```
+
+```{r}
+a <- ifelse(data$index_los < data$ipr1, 1, 0)
+table(a)
+```
+
+```{r}
+d <- data %>% filter(a == 1) %>% select(patient_mrn, dateof_transplant, admitdate, dischargedate, index_los, iculos, ipr1)
+#write_csv(d, 'ipr_days_analysis.csv')
+```
+
+```{r}
+data$dischargedate <- as.POSIXct(data$dischargedate)
+df <- data %>% mutate(hops_days = dischargedate - admitdate)
+df %>% select(hops_days, index_los)
+```
+
+Some patients who were not discharged to ipr have days in inpatient rehab.
+
+```{r}
+ipr_check <- data
+ipr_check$ipr <- ifelse(ipr_check$ipr1 > 0, 1, 0)
+ipr_check %>% group_by(location_dc, ipr) %>% dplyr::summarize(n = n())
+```
+
+```{r}
+ipr_check %>% filter(ipr == 0 & location_dc == 1)
+```
+
+```{r}
+ipr_check %>% filter(ipr == 1 & location_dc == 0)
+```
+
+```{r}
+data %>% filter(is.na(sma00))
+```
+
+```{r}
+describe(original_data %>% select(COPD_pre, COPD_post, HTN_pre, HTN_post, DM_pre, DM_post, CAD_pre, CAD_post, CKD_pre, CKD_post, CTD_pre, CTD_post))
+```
+```{r}
+apply((clean_data[c('copd', 'htn', 'dm', 'cad', 'ckd', 'ctd')]), 2, table)
+```
+
+```{r}
+clean_data['days_icu'] <- ifelse(clean_data$iculos - clean_data$dayson_ventpost_lt > 0,
+                           clean_data$iculos - clean_data$dayson_ventpost_lt, 0)
+```
+
+```{r}
+table(clean_data$iculos)
+```
+
+
+```{r}
+table(clean_data$days_icu)
+```
+
+```{r}
+table(clean_data$dayson_ventpost_lt)
+```
+
+
+```{r}
+
+```
+
