@@ -4,7 +4,9 @@ Emphasis on the role of Body Composition
 
 *Does body composition play a role in liver transplant outcomes?*
 
-Purpose: 
+Below is a summary of this project, but a full report can be found [here](https://github.com/sktorre/liver_transplant_research/blob/main/Deliverables/predicting_liver_transplant_outcomes.docx).
+
+## Purpose: 
 
 The purpose of this research is to understand how body composition effects short-term outcomes of liver transplants through predicting the status of patients for 90 days post-liver transplant. 
 
@@ -18,11 +20,17 @@ Patients with end-stage liver disease require liver transplant surgery from a li
 
 The data set used for this research was collected from 422 adult patients who underwent liver transplant surgery between 2009-2019 at Vanderbilt University Medical Center. The original dataset includes 140 variables including demographic information, pre-transplant and post-transplant comorbidities, surgical variables, and outcome information including days in various statuses, infections and mortality. Additionally, pre-transplant and post-transplant follow up CT scans were taken and analyzed for measures of body composition. Some patients have follow-up CT scans for up to 10 years, but many have only a few years of follow-up. It is important to note that the dates of liver transplants span from 01/09/2009 – 12/23/2018 while follow-up data was continued to be collected until summer 2021. As short-term outcomes were the focus of this analysis, many follow up measurements from annual checkups were not included in this work.
 
+A data dictionary can be found [here](https://github.com/sktorre/liver_transplant_research/blob/main/Data%20Dictionary.docx)
+
 Notes: All data is saved privately on Box as is not publicaly available.
 
 ## Methods
 
 Two models were fit, a portportional odds model and a neural network. There are pros and cons to each of the models and the combination of the two approaches provides for a robust analysis of short-term outcomes of liver transplants based on many factors but more specifically body composition. As mentioned before, the outcome status is ordinal with 4 levels, 0: home/IPR, 1: Hospital, 2: ICU/Vent, 3: Dead. Because the difference between being at home/IPR and being Dead is much different from either being at home/IPR and being in the hospital, the models must account for ordinality and be able to factor in these levels of differences in categories in assessing model performance. Additionally, as the outcome is not a single value for each patient, but a predicted status outcome for each of the 90 days post-liver transplant, the models must be able to handle the dimensions of time, previous day state and intra-patient correlation between observations for the same patient.
+
+The data processing, data reduction and proportional odds model can be found [here](https://github.com/sktorre/liver_transplant_research/blob/main/Analysis/05_liver_transplant_analysis.html) as well as the raw code [here](https://github.com/sktorre/liver_transplant_research/blob/main/Analysis/05_liver_transplant_analysis.Rmd).
+
+The code for the neural network can be found [here](https://github.com/sktorre/liver_transplant_research/blob/main/Analysis/05_modeling_nn.ipynb).
 
 ## Results
 
